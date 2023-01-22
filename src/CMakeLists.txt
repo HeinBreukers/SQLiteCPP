@@ -16,9 +16,12 @@ FetchContent_MakeAvailable(fmt)
 
 include_directories(FFT)
 
-set(SOURCE_FILES main.cpp)
+set(SOURCE_FILES 
+main.cpp)
 
-set(HEADER_FILES main.cpp)
+set(HEADER_FILES 
+Core/CommandProcessor.hpp
+Core/VirtualMachine.hpp)
 
 add_executable(db ${SOURCE_FILES} ${HEADER_FILES})
 target_link_libraries(db fmt)

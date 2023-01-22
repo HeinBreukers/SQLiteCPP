@@ -1,16 +1,27 @@
-#include "DB.hpp"
+#include "Core/CommandProcessor.hpp"
+#include "Core/VirtualMachine.hpp"
+#include "Backend/Pager.hpp"
+#include "CLI/Command.hpp"
 
+
+
+void print_prompt() 
+{ 
+    fmt::print("db > "); 
+}
 
 int main(/*int argc, char* argv[]*/) 
 {
   std::string input_buffer;
-  Table table;
-  while (true) {
+  std::string dbFile = "file.db";
+  Table table(dbFile);
+  MetaCommand metaCommand;
+  while (!metaCommand.exit) {
     print_prompt();
     std::getline(std::cin, input_buffer);
 
     if (input_buffer.front() == '.') {
-      switch (do_meta_command(input_buffer)) {
+      switch (metaCommand.do_meta_command(input_buffer)) {
         case (MetaCommandResult::SUCCESS):
           continue;
         case (MetaCommandResult::UNRECOGNIZED_COMMAND):

@@ -1,26 +1,43 @@
 #include <gtest/gtest.h>
-#include "../src/DB.hpp"
+#include <filesystem>
+
+#include "../src/Backend/Pager.hpp"
+#include "../src/Core/CommandProcessor.hpp"
+#include "../src/Core/VirtualMachine.hpp"
+#include "../src/CLI/Command.hpp"
+
 
 class DBTest : public ::testing::Test {
  protected:
+  
+  
   void SetUp() override 
   {
-
+    // create db file
   }
 
   void TearDown() override 
   {
-
+    //std::filesystem::remove(filename);
+    // delete db file
   }
   
-  Table table;
+  std::string filename = "tests.db";
+  MetaCommand metaCommand;
+  Table table{filename};
   Statement statement;
 };
+
+TEST_F(DBTest, Basic) {
+
+  //std::string input = ".exit";
+  EXPECT_EQ(1,1);
+}
 
 TEST_F(DBTest, NormalExit) {
 
   std::string input = ".exit";
-  EXPECT_EXIT(do_meta_command(input),testing::ExitedWithCode(0), "");
+  EXPECT_EXIT(metaCommand.do_meta_command(input),testing::ExitedWithCode(0), "");
 }
 
 TEST_F(DBTest, PrepareCorrectInsert) {
@@ -66,6 +83,31 @@ TEST_F(DBTest, ExecuteSelect) {
   execute_statement(statement, table).value();
 
   input = "select";
+  prepare_statement(input, statement);
+  testing::internal::CaptureStdout();
+  auto res = execute_statement(statement, table).value();
+  std::string output = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(res,ExecuteResult::SUCCESS);
+  EXPECT_EQ(output,"id: 1, age: 2, lastvar: 3\n");
+}
+
+TEST_F(DBTest, Persistance) {
+  
+  
+
+    
+
+  
+  EXPECT_EXIT([&](){
+    std::string input = "insert 1 2 3";
+    prepare_statement(input, statement);
+    execute_statement(statement, table).value();
+    input = ".exit";
+    metaCommand.do_meta_command(input);
+  }(),testing::ExitedWithCode(0), "");
+  //do_meta_command(input);
+
+  std::string input = "select";
   prepare_statement(input, statement);
   testing::internal::CaptureStdout();
   auto res = execute_statement(statement, table).value();
