@@ -14,8 +14,6 @@
 inline constexpr size_t ROW_SIZE = 12;
 inline constexpr size_t PAGE_SIZE = 4096;
 inline constexpr size_t TABLE_MAX_PAGES = 100;
-inline constexpr size_t ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
-inline constexpr size_t TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
 
 class DBException : public std::exception 
 {
@@ -51,10 +49,12 @@ struct Row
   }
 };
 
-struct Page
+// TODO make size correspond with pagetable size is os
+template<size_t PageSize = PAGE_SIZE>
+struct alignas(PageSize) Page
 {
-  // make size correspond with pagetable size is os
-  std::array<char,PAGE_SIZE> m_rows;
+  
+  //std::array<char,PageSize> m_rows;
 };
 
 template<std::size_t MaxPages = TABLE_MAX_PAGES>
@@ -67,18 +67,24 @@ public:
   Pager& operator=(const Pager&) = delete;
   Pager& operator=(Pager&&) noexcept= default;
 
-  Pager(const std::string& filename)
+  Pager(const std::string& filename):
   {
     m_fileStream.open(filename,std::ios::in | std::ios::out | std::ios::binary );
     
     if (!(m_fileStream.is_open()&&m_fileStream.good())) {
-      //fmt::print("Unable to open file\n");
-      throw PagerException("Unable to open file");
+      
+      throw PagerException(fmt::format("Unable to open file {}", filename));
     }
 
     m_fileStream.seekg(0, std::ios::end);
     m_fileLength = static_cast<size_t>(m_fileStream.tellg());
     m_fileStream.seekg(0, std::ios::beg);
+
+    m_numPages = m_fileLength/PAGE_SIZE;
+
+    if (file_length % PAGE_SIZE != 0) {
+      throw PagerException("Db file is not a whole number of pages. Corrupt file.");
+    }
 
     // TODO look into unnecessary 
     for(auto& page: m_pages)
@@ -127,30 +133,36 @@ public:
       }
 
       m_pages[pageNum] = std::move(page);
+
+      if (pageNum >= m_numPages) 
+      {
+        m_numPages = pageNum + 1;
+      }
     }
 
     return m_pages[pageNum];
   }
 
-  void flush(size_t pageNum, size_t size) {
-  if (!m_pages[pageNum]) {
-    //fmt::print("Tried to flush null page\n");
-    throw PagerException("Tried to flush null page");
+  void flush(size_t pageNum) {
+    if (!m_pages[pageNum]) {
+      //fmt::print("Tried to flush null page\n");
+      throw PagerException("Tried to flush null page");
+    }
+    if(!m_fileStream.seekp(static_cast<std::streamoff>(pageNum * PAGE_SIZE), std::ios::beg))
+    {
+      //fmt::print("Error seeking\n");
+      throw PagerException("Error seeking file");
+    }
+    if(!m_fileStream.write(m_pages[pageNum]->m_rows.data(), static_cast<std::streamsize>(PAGE_SIZE)))
+    {
+      //fmt::print("Error writing\n");
+      throw PagerException("Error writing file");
+    }
   }
-  if(!m_fileStream.seekp(static_cast<std::streamoff>(pageNum * PAGE_SIZE), std::ios::beg))
-  {
-    //fmt::print("Error seeking\n");
-    throw PagerException("Error seeking file");
-  }
-  if(!m_fileStream.write(m_pages[pageNum]->m_rows.data(), static_cast<std::streamsize>(size)))
-  {
-    //fmt::print("Error writing\n");
-    throw PagerException("Error writing file");
-  }
-}
 
   std::fstream m_fileStream;
   size_t m_fileLength{0};
+  size_t m_numPages;
   // if size gets too large start thinking about allocatin on heap
   // unique ptr because heap allocation is preffered for large sizes
   std::array<std::unique_ptr<Page>,MaxPages> m_pages{};
@@ -159,39 +171,29 @@ public:
 class Table{
 public:
     explicit Table(const std::string& filename):
-    m_pager(filename),
-    num_rows(m_pager.m_fileLength / ROW_SIZE)
+    m_pager(filename)
+    //,num_rows(m_pager.m_fileLength / ROW_SIZE)
     {}
 
     ~Table()
     {
-      size_t num_full_pages = num_rows / ROWS_PER_PAGE;
 
-      for (size_t i = 0; i < num_full_pages; i++) {
+      for (size_t i = 0; i < m_pager.m_numPages; i++) {
         if (!m_pager.m_pages[i]) {
           continue;
         }
-        m_pager.flush(i,PAGE_SIZE);
+        m_pager.flush(i);
         m_pager.m_pages[i] = nullptr;
       }
 
-      // There may be a partial page to write to the end of the file
-      // This should not be needed after we switch to a B-tree
-      size_t num_additional_rows = num_rows % ROWS_PER_PAGE;
-      if (num_additional_rows > 0) {
-        size_t page_num = num_full_pages;
-        if (m_pager.m_pages[page_num]) {
-          m_pager.flush(page_num, num_additional_rows * ROW_SIZE);
-          m_pager.m_pages[page_num] = nullptr;
-        }
-      }
-
-      m_pager.m_fileStream.close();
-      if(m_pager.m_fileStream.fail())
-      {
-        fmt::print("Error closing db file.\n");
-        //TODO throw PagerException("Error closing db file");
-      }
+      // filestream is RAII object so no need to close manually
+      // m_pager.m_fileStream.close();
+      // if(m_pager.m_fileStream.fail())
+      // {
+      //   //throw PagerException("Error closing db file");
+      //   fmt::print("Error closing db file.\n");
+      //   //TODO throw PagerException("Error closing db file");
+      // }
     }
 
     // delete copy and move constructors because table flushes on destruction and pager has deleted copy constructor
@@ -199,7 +201,7 @@ public:
     Table(Table&&) = delete;
 //private:
     Pager<> m_pager;
-    size_t num_rows;
+    size_t m_rootPageNum;
     //Pager<>* pager;
 };
 
@@ -222,30 +224,37 @@ public:
   // TODO overload increment operators
   void advance() 
   {
-    row_num += 1;
-    if (row_num >= table.num_rows) {
+    auto& node = table.m_pager.getPage(table.m_rootPageNum); 
+
+    ++m_cellNum;
+    if (m_cellNum >= (*leaf_node_num_cells(node)))
+    {
       end_of_table = true;
     }
   }
 
-  std::span<char> value() {
-    size_t page_num = row_num / ROWS_PER_PAGE;
-    auto& page = table.m_pager.getPage(page_num);
-    size_t row_offset = row_num % ROWS_PER_PAGE;
-    size_t byte_offset = row_offset * ROW_SIZE;
-    return std::span{&page->m_rows[byte_offset],ROW_SIZE};
+  auto value() {
+    auto& page = table.m_pager.getPage(m_pageNum);
+    return leaf_node_value(page, m_cellNum);
+    //return std::span{&page->m_rows[byte_offset],ROW_SIZE};
   }
 
   Table& table;
-  size_t row_num;
+  size_t m_pageNum;
+  size_t m_cellNum;
   bool end_of_table;  // Indicates a position one past the last element
-} ;
+};
 
 // TODO forward table?
+// TODO make member functions
 Cursor table_start(Table& table) {
-  return Cursor{table,0,(table.num_rows == 0)};
+  auto& root_node = table.m_pager.getPage(table.m_rootPageNum); 
+  uint32_t num_cells = *leaf_node_num_cells(root_node);
+  return Cursor{.table = table, .m_pageNum = table.m_rootPageNum, .m_cellNum = 0, .end_of_table = (num_cells == 0)};
 }
 
 Cursor table_end(Table& table) {
-  return Cursor{table,table.num_rows,true};
+  auto& root_node = table.m_pager.getPage(table.m_rootPageNum); 
+  uint32_t num_cells = *leaf_node_num_cells(root_node);
+  return Cursor{.table = table, .m_pageNum = table.m_rootPageNum, .m_cellNum = num_cells, .end_of_table = true};
 }

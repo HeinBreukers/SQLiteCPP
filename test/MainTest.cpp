@@ -13,16 +13,18 @@ class DBTest : public ::testing::Test {
   
   void SetUp() override 
   {
-    // create db file
+    // close filestram that created dbfile;
+    newFile.close();
   }
 
   void TearDown() override 
   {
-    //std::filesystem::remove(filename);
     // delete db file
+    std::filesystem::remove(filename);
   }
   
   std::string filename = "tests.db";
+  std::ofstream newFile{filename};
   MetaCommand metaCommand;
   Table table{filename};
   Statement statement;
@@ -37,7 +39,10 @@ TEST_F(DBTest, Basic) {
 TEST_F(DBTest, NormalExit) {
 
   std::string input = ".exit";
-  EXPECT_EXIT(metaCommand.do_meta_command(input),testing::ExitedWithCode(0), "");
+  EXPECT_EQ(metaCommand.exit, false);
+  auto res = metaCommand.do_meta_command(input);
+  EXPECT_EQ(metaCommand.exit, true);
+  //EXPECT_EXIT(metaCommand.do_meta_command(input),testing::ExitedWithCode(0), "");
 }
 
 TEST_F(DBTest, PrepareCorrectInsert) {
@@ -92,30 +97,30 @@ TEST_F(DBTest, ExecuteSelect) {
 }
 
 TEST_F(DBTest, Persistance) {
-  
-  
+  std::string input = "insert 1 2 3";
+  prepare_statement(input, statement);
+  execute_statement(statement, table).value();
+  input = ".exit";
+  metaCommand.do_meta_command(input);
+  EXPECT_EQ(metaCommand.exit, true);
+  table.~Table();
 
-    
 
-  
-  EXPECT_EXIT([&](){
-    std::string input = "insert 1 2 3";
-    prepare_statement(input, statement);
-    execute_statement(statement, table).value();
-    input = ".exit";
-    metaCommand.do_meta_command(input);
-  }(),testing::ExitedWithCode(0), "");
-  //do_meta_command(input);
-
-  std::string input = "select";
+  Table newTable{filename};
+  input = "select";
   prepare_statement(input, statement);
   testing::internal::CaptureStdout();
-  auto res = execute_statement(statement, table).value();
+  auto res = execute_statement(statement, newTable).value();
   std::string output = testing::internal::GetCapturedStdout();
   EXPECT_EQ(res,ExecuteResult::SUCCESS);
   EXPECT_EQ(output,"id: 1, age: 2, lastvar: 3\n");
 }
 
+//TODO Test Table Full
+TEST_F(DBTest, TableFull) {
+
+  EXPECT_EQ(1,1);
+}
+
 //TODO Test table implementation
 //TODO test buffer overflows
-//TODO Test Table Full
