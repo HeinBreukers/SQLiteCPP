@@ -21,7 +21,7 @@ int main(/*int argc, char* argv[]*/)
     std::getline(std::cin, input_buffer);
 
     if (input_buffer.front() == '.') {
-      switch (metaCommand.do_meta_command(input_buffer)) {
+      switch (metaCommand.do_meta_command(input_buffer,table)) {
         case (MetaCommandResult::SUCCESS):
           continue;
         case (MetaCommandResult::UNRECOGNIZED_COMMAND):
@@ -35,8 +35,8 @@ int main(/*int argc, char* argv[]*/)
       case (PrepareResult::SUCCESS):
         break;
       case (PrepareResult::SYNTAX_ERROR):
-          fmt::print("Syntax error. Could not parse statement.\n");
-          continue;
+        fmt::print("Syntax error. Could not parse statement.\n");
+        continue;
       case (PrepareResult::UNRECOGNIZED_STATEMENT):
         fmt::print("Unrecognized keyword at start of '{}'.\n", input_buffer);
         continue;
@@ -48,6 +48,9 @@ int main(/*int argc, char* argv[]*/)
         break;
       case (ExecuteResult::TABLE_FULL):
         fmt::print("Error: Table full.\n");
+        break;
+      case (ExecuteResult::DUPLICATE_KEY):
+        fmt::print("Error: Duplicate Key.\n");
         break;
     }
    

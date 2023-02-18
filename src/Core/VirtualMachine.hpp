@@ -8,7 +8,7 @@
 #include <fmt/format.h>
 
 #include "../Backend/Pager.hpp"
-
+#include "../Backend/Cursor.hpp"
 
 
 enum class StatementType
@@ -20,7 +20,8 @@ enum class StatementType
 enum class ExecuteResult
 { 
     SUCCESS, 
-    TABLE_FULL 
+    TABLE_FULL,
+    DUPLICATE_KEY
 };
 
 
@@ -34,26 +35,38 @@ struct Statement
 
 
 ExecuteResult execute_insert(const Statement& statement, Table& table) {
-  if (table.num_rows >= TABLE_MAX_ROWS) {
+  auto* node = table.m_pager.getPage(table.m_rootPageNum).get();
+  auto* leafNode = static_cast<LeafNode*>(node);
+
+  auto numCells = leafNode->Header()->numCells;
+  if ( numCells >= leafNode->maxCells()) 
+  {  
     return ExecuteResult::TABLE_FULL;
   }
 
   auto& row_to_insert = statement.row_to_insert;
-  auto cursor = table_end(table);
-  auto slot = cursor.value();
-  memcpy(slot.data(), serialize_row(row_to_insert).data(),slot.size());
-  ++ table.num_rows;
+
+  uint32_t key_to_insert = row_to_insert.id;
+  auto cursor = table_find(table, key_to_insert);
+  if (cursor.m_cellNum < numCells) {
+    uint32_t key_at_index = leafNode->Cell(cursor.m_cellNum)->m_key;
+    if (key_at_index == key_to_insert) {
+      return ExecuteResult::DUPLICATE_KEY;
+    }
+  }
+  cursor.insert(row_to_insert.id,row_to_insert);
 
   return ExecuteResult::SUCCESS;
 }
 
 ExecuteResult execute_select(Table& table) {
   auto cursor = table_start(table);
+  
   Row row;
 
   while (!(cursor.end_of_table)) 
   {
-    row = deserialize_row(cursor.value());
+    row = cursor.value();
     row.print();
     cursor.advance();
   }

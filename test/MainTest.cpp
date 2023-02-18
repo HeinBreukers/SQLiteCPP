@@ -40,7 +40,7 @@ TEST_F(DBTest, NormalExit) {
 
   std::string input = ".exit";
   EXPECT_EQ(metaCommand.exit, false);
-  auto res = metaCommand.do_meta_command(input);
+  auto res = metaCommand.do_meta_command(input,table);
   EXPECT_EQ(metaCommand.exit, true);
   //EXPECT_EXIT(metaCommand.do_meta_command(input),testing::ExitedWithCode(0), "");
 }
@@ -101,7 +101,7 @@ TEST_F(DBTest, Persistance) {
   prepare_statement(input, statement);
   execute_statement(statement, table).value();
   input = ".exit";
-  metaCommand.do_meta_command(input);
+  metaCommand.do_meta_command(input,table);
   EXPECT_EQ(metaCommand.exit, true);
   table.~Table();
 

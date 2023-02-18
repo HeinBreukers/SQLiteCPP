@@ -1,6 +1,8 @@
 #pragma once
 #include <cstddef>
 #include <inttypes.h>
+#include <array>
+#include <bit>
 
 #include "Pager.hpp"
 
@@ -27,7 +29,7 @@ public:
 };
 #pragma pack()
 #pragma pack(1)
-class LeafNodeBody
+class LeafNodeCell
 {
 public:
     uint32_t m_key;
@@ -35,51 +37,74 @@ public:
 };
 #pragma pack()
 
-
-
-
-
-
-class InternalNode
-{
-    
-};
-
-class LeafNode
-{
-
-};
-
-template<std::size_t order>
-class BTree
+class CommonNode: public Page<>
 {
 public:
 
-private:
+    CommonNodeHeader* Header()
+    {
+        // TODO replace by bitcast
+        return reinterpret_cast<CommonNodeHeader*>(&m_memPool[0]);
+    }
 };
 
-template<typename Derived>
-class BTreeNode
+
+class LeafNode: public CommonNode
 {
-    NodeType nodeType;
-    bool isRoot;
-    BTreeNode* parent;
-}
+public:
+    LeafNode()
+    {
+        init();
+    }
+    
+    void init()
+    {
+        Header()->nodeType=NodeType::Leaf;
+        Header()->numCells=0;
+    }
 
-uint32_t* leaf_node_num_cells(void* node) {
-  return node + LEAF_NODE_NUM_CELLS_OFFSET;
-}
+    LeafNodeHeader* Header()
+    {
+        // TODO replace by bitcast
+        return reinterpret_cast<LeafNodeHeader*>(&m_memPool[0]);
+    }
 
-void* leaf_node_cell(void* node, uint32_t cell_num) {
-  return node + LEAF_NODE_HEADER_SIZE + cell_num * LEAF_NODE_CELL_SIZE;
-}
+    LeafNodeCell* Cell(size_t index)
+    {
+        return reinterpret_cast<LeafNodeCell*>(&m_memPool[0]+ sizeof(LeafNodeHeader)+index*sizeof(LeafNodeCell));
+    }
 
-uint32_t* leaf_node_key(void* node, uint32_t cell_num) {
-  return leaf_node_cell(node, cell_num);
-}
+    [[nodiscard]] size_t maxCells() noexcept
+    {
+        return (Page::size - sizeof(LeafNodeHeader))/sizeof(LeafNodeCell);
+    }
 
-void* leaf_node_value(void* node, uint32_t cell_num) {
-  return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
-}
+    void print()
+    {
+        uint32_t num_cells = Header()->numCells;
+        fmt::print("leaf (size {})\n", num_cells);
+        for (uint32_t i = 0; i < num_cells; i++) {
+            uint32_t key = Cell(i)->m_key;
+            fmt::print("  - {} : {}\n", i, key);
+        }
+    }
 
-void initialize_leaf_node(void* node) { *leaf_node_num_cells(node) = 0; }
+};
+
+// uint32_t* leaf_node_num_cells(void* node) {
+//   return node + LEAF_NODE_NUM_CELLS_OFFSET;
+// }
+
+// void* leaf_node_cell(void* node, uint32_t cell_num) {
+//   return node + LEAF_NODE_HEADER_SIZE + cell_num * LEAF_NODE_CELL_SIZE;
+// }
+
+// uint32_t* leaf_node_key(void* node, uint32_t cell_num) {
+//   return leaf_node_cell(node, cell_num);
+// }
+
+// void* leaf_node_value(void* node, uint32_t cell_num) {
+//   return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
+// }
+
+// void initialize_leaf_node(void* node) { *leaf_node_num_cells(node) = 0; }
