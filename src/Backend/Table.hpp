@@ -22,7 +22,7 @@ public:
       {
         // New database file. Initialize page 0 as leaf node.
         // TODO make sure pager properly inits nodes
-        m_root = fromPage(m_pager.getPage(0).get());
+        m_root = m_pager.fromPage(m_pager.getPage(0).get());
         auto leafNode = std::get<LeafNode<>*>(m_root);
         //leafNode->init();
         leafNode->m_header.m_isRoot = true;
@@ -52,14 +52,14 @@ public:
 
     // TODO create proper factory where node is returned instead of page
     auto* rootPage = m_pager.getPage(m_rootPageNum).get();
-    m_root = fromPage(rootPage);
+    m_root = m_pager.fromPage(rootPage);
     auto* rootNode = std::get<InternalNode<>*>(m_root);
     auto* rightChildPage = m_pager.getPage(rightChildPageNum).get();
-    auto rightChild = fromPage(rightChildPage);
+    auto rightChild = m_pager.fromPage(rightChildPage);
 
     auto leftChildPageNum = m_pager.getUnusedPageNum();
     auto* leftChildPage = m_pager.getPage(leftChildPageNum).get();
-    auto leftChild = fromPage(leftChildPage);
+    auto leftChild = m_pager.fromPage(leftChildPage);
     
     /* Left child has data copied from old root */
     memcpy(leftChildPage, rootPage, Page<>::size);

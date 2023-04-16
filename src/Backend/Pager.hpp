@@ -11,26 +11,11 @@
 
 #include <system_error>
 
-#include "BTree"
+#include "BTree.hpp"
 
-inline constexpr size_t ROW_SIZE = 12;
-inline constexpr size_t PAGE_SIZE = 4096;
-inline constexpr size_t TABLE_MAX_PAGES = 100;
 
-class DBException : public std::exception 
-{
-public:
-  DBException(const std::string& msg) : message(fmt::format("DB Exception {}",msg)) {}
-  virtual ~DBException() noexcept = default;
 
-  const char* what() const noexcept override
-  {
-    return message.c_str();
-  }
 
-private:
-  std::string message;
-};
 
 class PagerException : public DBException 
 {
@@ -39,17 +24,7 @@ public:
   virtual ~PagerException() noexcept = default;
 };
 
-struct Row
-{
-  uint32_t id;
-  uint32_t age;
-  uint32_t lastvar;
 
-  void print()
-  {
-    fmt::print("id: {}, age: {}, lastvar: {}\n",id,age,lastvar);
-  }
-};
 
 // TODO make size correspond with pagetable size is os
 // TODO make constructor private
@@ -161,7 +136,7 @@ public:
     return m_pages[pageNum];
   }
 
-  [[nodsicard]] nodePtr fromPage(Page<>* page)
+  [[nodiscard]] nodePtr fromPage(Page<>* page)
   {
       auto nodeType = *reinterpret_cast<NodeType*>(page);
       //auto nodeType = static_cast<CommonNode*>(page)->Header()->m_nodeType;
@@ -178,7 +153,7 @@ public:
       throw BTreeException(fmt::format("Invalid Node Type"));
   }
 
-  
+
   void flush(size_t pageNum) {
     if (!m_pages[pageNum]) {
       throw PagerException("Tried to flush null page");
@@ -211,17 +186,5 @@ public:
 };
 
 
-// TODO move out of header
-std::vector<char> serialize_row(const Row& source) {
-    std::vector<char> destination(3*sizeof(uint32_t));
-    std::memcpy(&destination[0], &source, 3*sizeof(uint32_t)); 
-    return destination;
-}
-
-Row deserialize_row(std::span<char> source) {
-    Row destination;
-    std::memcpy(&destination, &source[0], 3*sizeof(uint32_t));
-    return destination;
-}
 
 

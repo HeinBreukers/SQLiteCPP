@@ -19,27 +19,27 @@ public:
   // TODO iterators
   void advance() 
   {
-    auto page = m_table.m_pager.getPage(m_table.m_rootPageNum).get(); 
+    auto page = m_table.m_pager.fromPage(m_table.m_pager.getPage(m_table.m_rootPageNum).get()); 
 
     ++m_cellNum;
-    if (m_cellNum >= static_cast<LeafNode<>*>(page)->Header()->numCells)
+    if (m_cellNum >= std::get<LeafNode<>*>(page)->m_header.m_numCells)
     {
       m_endOfTable = true;
     }
   }
 
   auto value() {
-    auto page = m_table.m_pager.getPage(m_pageNum).get();
-    return static_cast<LeafNode<>*>(page)->Cell(m_cellNum)->m_value;
+    auto page = m_table.m_pager.fromPage(m_table.m_pager.getPage(m_pageNum).get());
+    return std::get<LeafNode<>*>(page)->m_cells[m_cellNum].m_value;
   }
 
   void insert(uint32_t key, const Row& value)
   {
-    auto node = m_table.m_pager.getPage(m_pageNum).get();
-    auto* leafNode = static_cast<LeafNode*>(node);
+    auto node = m_table.m_pager.fromPage(m_table.m_pager.getPage(m_pageNum).get());
+    auto* leafNode = std::get<LeafNode<>*>(node);
 
-    uint32_t num_cells = leafNode->Header()->numCells;
-    if (num_cells >= LeafNode::maxCells()) {
+    uint32_t num_cells = leafNode->m_header.m_numCells;
+    if (num_cells >= LeafNode<>::maxCells()) {
       // Node full
       leaf_node_split_and_insert(key, value);
       return;
@@ -48,13 +48,13 @@ public:
     if (m_cellNum < num_cells) {
       // Make room for new cell
       for (uint32_t i = num_cells; i > m_cellNum; i--) {
-        memcpy(leafNode->Cell(i) ,leafNode->Cell(i-1) ,
-              sizeof(LeafNodeCell));
+        leafNode->m_cells[i] = leafNode->m_cells[i-1];
+        //memcpy(&(leafNode->m_cells[i]) ,&(leafNode->m_cells[i-1]) ,sizeof(LeafNodeCell));
       }
     }
-    leafNode->Header()->numCells +=1;
-    leafNode->Cell(m_cellNum)->m_key = key;
-    leafNode->Cell(m_cellNum)->m_value = value;
+    leafNode->m_header.m_numCells +=1;
+    leafNode->m_cells[m_cellNum].m_key = key;
+    leafNode->m_cells[m_cellNum].m_value = value;
     //serialize_row(value, leafNode->Cell(m_cellNum)->m_value);
   }
 
@@ -64,39 +64,43 @@ public:
     Insert the new value in one of the two nodes.
     Update parent or create a new parent.
     */
-    auto* oldNode = m_table.m_pager.getPage(m_pageNum).get();
-    auto* oldLeafNode = static_cast<LeafNode<>*>(oldNode);
+    auto oldNode = m_table.m_pager.fromPage(m_table.m_pager.getPage(m_pageNum).get());
+    auto* oldLeafNode = std::get<LeafNode<>*>(oldNode);
     size_t newPageNum = m_table.m_pager.getUnusedPageNum();
-    auto* newNode = m_table.m_pager.getPage(newPageNum).get();
-    auto* newLeafNode = static_cast<LeafNode<>*>(newNode);
-    newLeafNode->init();
+    auto newNode = m_table.m_pager.fromPage(m_table.m_pager.getPage(newPageNum).get());
+    auto* newLeafNode = std::get<LeafNode<>*>(newNode);
+
+    // TODO proper init
+    //newLeafNode->init();
     /*
     All existing keys plus new key should be divided
     evenly between old (left) and new (right) nodes.
     Starting from the right, move each key to correct position.
     */
-    for (int32_t i = LeafNode::maxCells(); i >= 0; i--) {
-      LeafNode* destination_node;
-      if (static_cast<size_t>(i) >= LeafNode::leftSplitCount()) {
+    for (int32_t i = LeafNode<>::maxCells(); i >= 0; i--) {
+      LeafNode<>* destination_node;
+      if (static_cast<size_t>(i) >= LeafNode<>::leftSplitCount()) {
         destination_node = newLeafNode;
       } else {
         destination_node = oldLeafNode;
       }
-      size_t index_within_node = static_cast<size_t>(i) % LeafNode::leftSplitCount();
-      LeafNodeCell* destination = destination_node->Cell(index_within_node);
+      size_t index_within_node = static_cast<size_t>(i) % LeafNode<>::leftSplitCount();
+      LeafNodeCell& destination = destination_node->m_cells[index_within_node];
 
       if (static_cast<size_t>(i) == m_cellNum) {
-        destination->m_value = value;
+        destination.m_value = value;
       } else if (static_cast<size_t>(i) > m_cellNum) {
-        memcpy(destination, oldLeafNode->Cell(static_cast<size_t>(i)-1), sizeof(LeafNodeCell));
+        destination = oldLeafNode->m_cells[static_cast<size_t>(i-1)];
+        //memcpy(destination, oldLeafNode->Cell(static_cast<size_t>(i)-1), sizeof(LeafNodeCell));
       } else {
-        memcpy(destination, oldLeafNode->Cell(static_cast<size_t>(i)), sizeof(LeafNodeCell));
+        destination = oldLeafNode->m_cells[static_cast<size_t>(i)];
+        //memcpy(destination, oldLeafNode->Cell(static_cast<size_t>(i)), sizeof(LeafNodeCell));
       }
     }
     /* Update cell count on both leaf nodes */
-    oldLeafNode->Header()->numCells = LeafNode::leftSplitCount();
-    newLeafNode->Header()->numCells = LeafNode::rightSplitCount();
-    if (oldLeafNode->Header()->isRoot) {
+    oldLeafNode->m_header.m_numCells = LeafNode<>::leftSplitCount();
+    newLeafNode->m_header.m_numCells = LeafNode<>::rightSplitCount();
+    if (oldLeafNode->m_header.m_isRoot) {
       m_table.createNewRoot(newPageNum);
     } else {
       throw CursorException("Need to implement updating parent after split");
@@ -113,14 +117,14 @@ public:
 // TODO make member functions
 // TODO make leafNode generic inernal vs leaf node
 Cursor table_start(Table& table) {
-  auto root_node = table.m_pager.getPage(table.m_rootPageNum).get(); 
-  uint32_t num_cells = static_cast<LeafNode*>(root_node)->Header()->numCells;
+  auto root_node = table.m_pager.fromPage(table.m_pager.getPage(table.m_rootPageNum).get()); 
+  uint32_t num_cells = std::get<LeafNode<>*>(root_node)->m_header.m_numCells;
   return Cursor{.m_table = table, .m_pageNum = table.m_rootPageNum, .m_cellNum = 0, .m_endOfTable = (num_cells == 0)};
 }
 
 Cursor table_end(Table& table) {
-  auto root_node = table.m_pager.getPage(table.m_rootPageNum).get(); 
-  uint32_t num_cells = static_cast<LeafNode*>(root_node)->Header()->numCells;
+  auto root_node = table.m_pager.fromPage(table.m_pager.getPage(table.m_rootPageNum).get()); 
+  uint32_t num_cells = std::get<LeafNode<>*>(root_node)->m_header.m_numCells;
   return Cursor{.m_table = table, .m_pageNum = table.m_rootPageNum, .m_cellNum = num_cells, .m_endOfTable = true};
 
 
@@ -128,9 +132,9 @@ Cursor table_end(Table& table) {
 
 Cursor leaf_node_find(Table& table, size_t page_num, uint32_t key) 
 {
-  auto* node = table.m_pager.getPage(page_num).get(); 
-  auto* leafNode = static_cast<LeafNode*>(node);
-  uint32_t num_cells = leafNode->Header()->numCells;
+  auto node = table.m_pager.fromPage(table.m_pager.getPage(page_num).get()); 
+  auto* leafNode = std::get<LeafNode<>*>(node);
+  uint32_t num_cells = leafNode->m_header.m_numCells;
 
 
   // Binary search
@@ -138,7 +142,7 @@ Cursor leaf_node_find(Table& table, size_t page_num, uint32_t key)
   uint32_t one_past_max_index = num_cells;
   while (one_past_max_index != min_index) {
     uint32_t index = (min_index + one_past_max_index) / 2;
-    uint32_t key_at_index = leafNode->Cell(index)->m_key;
+    uint32_t key_at_index = leafNode->m_cells[index].m_key;
     if (key == key_at_index) {
       return Cursor{.m_table = table, .m_pageNum = page_num, .m_cellNum = index, .m_endOfTable = (num_cells == 0)};
     }
@@ -156,14 +160,14 @@ Cursor leaf_node_find(Table& table, size_t page_num, uint32_t key)
 Cursor table_find(Table& table, uint32_t key) 
 {
   auto* root_node = table.m_pager.getPage(table.m_rootPageNum).get(); 
-  auto node = fromPage(root_node);
+  auto node = table.m_pager.fromPage(root_node);
 
   return std::visit([&](auto&& arg) ->Cursor 
     {
         using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, InternalNode*>)
+        if constexpr (std::is_same_v<T, InternalNode<>*>)
             throw CursorException("Need to implement searching an internal node");
-        else if constexpr (std::is_same_v<T, LeafNode*>)
+        else if constexpr (std::is_same_v<T, LeafNode<>*>)
             return leaf_node_find(table, table.m_rootPageNum, key);
     }, node);
 }
