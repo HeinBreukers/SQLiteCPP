@@ -39,10 +39,6 @@ ExecuteResult execute_insert(const Statement& statement, Table& table) {
   auto* leafNode = static_cast<LeafNode*>(node);
 
   auto numCells = leafNode->Header()->numCells;
-  if ( numCells >= leafNode->maxCells()) 
-  {  
-    return ExecuteResult::TABLE_FULL;
-  }
 
   auto& row_to_insert = statement.row_to_insert;
 
@@ -64,7 +60,7 @@ ExecuteResult execute_select(Table& table) {
   
   Row row;
 
-  while (!(cursor.end_of_table)) 
+  while (!(cursor.m_endOfTable)) 
   {
     row = cursor.value();
     row.print();

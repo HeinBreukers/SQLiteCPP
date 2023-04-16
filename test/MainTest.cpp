@@ -13,7 +13,7 @@ class DBTest : public ::testing::Test {
   
   void SetUp() override 
   {
-    // close filestram that created dbfile;
+    // close filestream that created dbfile;
     newFile.close();
   }
 
@@ -103,6 +103,8 @@ TEST_F(DBTest, Persistance) {
   input = ".exit";
   metaCommand.do_meta_command(input,table);
   EXPECT_EQ(metaCommand.exit, true);
+  // Table does not have explicit destructor anymore 
+  // TODO make DB class that behaves like an actual executable
   table.~Table();
 
 

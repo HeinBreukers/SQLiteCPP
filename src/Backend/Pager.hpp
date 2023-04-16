@@ -11,6 +11,8 @@
 
 #include <system_error>
 
+#include "BTree"
+
 inline constexpr size_t ROW_SIZE = 12;
 inline constexpr size_t PAGE_SIZE = 4096;
 inline constexpr size_t TABLE_MAX_PAGES = 100;
@@ -59,6 +61,7 @@ public:
   std::array<char,PageSize> m_memPool;
 };
 
+// The Pager reads and writes Pages to/from disk
 template<std::size_t MaxPages = TABLE_MAX_PAGES>
 struct Pager{
 public: 
@@ -78,6 +81,7 @@ public:
       throw PagerException(fmt::format("Unable to open file {}", filename));
     }
 
+    // get file length
     m_fileStream.seekg(0, std::ios::end);
     m_fileLength = static_cast<size_t>(m_fileStream.tellg());
     m_fileStream.seekg(0, std::ios::beg);
@@ -89,12 +93,25 @@ public:
     }
 
     // TODO look into unnecessary 
-    for(auto& page: m_pages)
-    {
-      page = nullptr;
-    }
+    // for(auto& page: m_pages)
+    // {
+    //   page = nullptr;
+    // }
   }
   
+  ~Pager()
+  {
+      for (size_t i = 0; i < m_numPages; i++) {
+        if (!m_pages[i]) {
+          continue;
+        }
+
+        // TODO RAII
+        flush(i);
+        //m_pages[i] = nullptr;
+      }
+  }
+
   std::unique_ptr<Page<>>& getPage(size_t pageNum) 
   {
     if (pageNum > MaxPages) 
@@ -105,6 +122,7 @@ public:
 
     if (!m_pages[pageNum]) {
       // Cache miss. Allocate memory and load from file.
+      // TODO construct inplace in array, then use ref to edit page
       auto page = std::make_unique<Page<>>();
       size_t num_pages = m_fileLength / PAGE_SIZE;
 
@@ -115,7 +133,6 @@ public:
 
       if (pageNum < num_pages) {
         m_fileStream.seekg(static_cast<std::streamoff>(pageNum * PAGE_SIZE), std::ios::beg);
-        // TODO m_rows.size();
         
         // read page or till eof
         if(!m_fileStream.read(page->m_memPool.data(),PAGE_SIZE))
@@ -127,7 +144,6 @@ public:
           }
           else
           {
-            //fmt::print("Error reading file\n");
             throw PagerException("Error reading file");
           }
         }
@@ -145,33 +161,57 @@ public:
     return m_pages[pageNum];
   }
 
+  [[nodsicard]] nodePtr fromPage(Page<>* page)
+  {
+      auto nodeType = *reinterpret_cast<NodeType*>(page);
+      //auto nodeType = static_cast<CommonNode*>(page)->Header()->m_nodeType;
+      switch (nodeType)
+      {
+      case (NodeType::Internal):
+          return reinterpret_cast<InternalNode<>*>(page);
+          break;
+      case (NodeType::Leaf):
+          return reinterpret_cast<LeafNode<>*>(page);
+          break;
+
+      }
+      throw BTreeException(fmt::format("Invalid Node Type"));
+  }
+
+  
   void flush(size_t pageNum) {
     if (!m_pages[pageNum]) {
-      //fmt::print("Tried to flush null page\n");
       throw PagerException("Tried to flush null page");
     }
     if(!m_fileStream.seekp(static_cast<std::streamoff>(pageNum * PAGE_SIZE), std::ios::beg))
     {
-      //fmt::print("Error seeking\n");
       throw PagerException("Error seeking file");
     }
     if(!m_fileStream.write(m_pages[pageNum]->m_memPool.data(), static_cast<std::streamsize>(PAGE_SIZE)))
     {
-      //fmt::print("Error writing\n");
       throw PagerException("Error writing file");
     }
+  }
+
+  /*
+  Until we start recycling free pages, new pages will always
+  go onto the end of the database file
+  */
+  size_t getUnusedPageNum() 
+  { 
+    return m_numPages; 
   }
 
   std::fstream m_fileStream;
   size_t m_fileLength{0};
   size_t m_numPages;
-  // if size gets too large start thinking about allocatin on heap
   // unique ptr because heap allocation is preffered for large sizes
+  // TODO maybe vecor instead of array?
   std::array<std::unique_ptr<Page<>>,MaxPages> m_pages{};
 };
 
 
-
+// TODO move out of header
 std::vector<char> serialize_row(const Row& source) {
     std::vector<char> destination(3*sizeof(uint32_t));
     std::memcpy(&destination[0], &source, 3*sizeof(uint32_t)); 

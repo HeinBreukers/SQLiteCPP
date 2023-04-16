@@ -22,9 +22,11 @@ public:
     else if (input_buffer ==  ".btree") 
     {
      fmt::print("Tree:\n");
-     auto* node = table.m_pager.getPage(0).get();
-     auto* leafNode = static_cast<LeafNode*>(node);
-     leafNode->print();
+     auto* page = table.m_pager.getPage(0).get();
+     auto node = fromPage(page);
+     std::visit([&](auto&& arg){arg->print();}, node);
+     //auto* leafNode = static_cast<LeafNode*>(node);
+     //leafNode->print();
      return MetaCommandResult::SUCCESS;
     }
     else {
