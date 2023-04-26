@@ -14,9 +14,6 @@
 #include "BTree.hpp"
 
 
-
-
-
 class PagerException : public DBException 
 {
 public:
@@ -24,17 +21,6 @@ public:
   virtual ~PagerException() noexcept = default;
 };
 
-
-
-// TODO make size correspond with pagetable size is os
-// TODO make constructor private
-template<size_t PageSize = PAGE_SIZE>
-class alignas(PageSize) Page
-{
-public:
-  static constexpr size_t size = PageSize;
-  std::array<char,PageSize> m_memPool;
-};
 
 // The Pager reads and writes Pages to/from disk
 template<std::size_t MaxPages = TABLE_MAX_PAGES>
@@ -77,7 +63,9 @@ public:
   ~Pager()
   {
       for (size_t i = 0; i < m_numPages; i++) {
-        if (!m_pages[i]) {
+        //if (!m_pages[i]) {
+        if(!IsNotNull(m_pages[i]))
+        {
           continue;
         }
 
@@ -87,7 +75,121 @@ public:
       }
   }
 
-  std::unique_ptr<Page<>>& getPage(size_t pageNum) 
+  // TODO
+  [[nodiscard]] nodePtr getRoot() 
+  {
+    return getNode<NodeType::Leaf>(0);
+  }
+
+  //  TODO should make_unique new node
+  // Creates a new node at the end of the nodePtr array
+  template<NodeType nodeType>
+  [[nodiscard]] decltype(auto) getUnusedNode() 
+  { 
+    auto idx = getUnusedPageNum();
+    if constexpr (nodeType == NodeType::Internal)
+    {
+      auto newInternal = m_internalNodes.emplace_back(std::make_unique<InternalNode<>>()).get();
+      m_pages[idx]= newInternal;
+      return newInternal;
+    }
+    else if constexpr (nodeType == NodeType::Leaf)
+    {
+      auto newLeaf = m_leafNodes.emplace_back(std::make_unique<LeafNode<>>()).get();
+      m_pages[idx]= newLeaf;
+      return newLeaf;
+    }
+
+    throw BTreeException(fmt::format("Invalid Node Type"));
+  }
+
+  nodePtr copyToNewNode(const nodePtr& node)
+  {
+    //auto* page = getUnusedPage().get();
+
+    return std::visit( [&](auto&& src)->nodePtr
+    { 
+      NodeType nodeType = src->m_header.m_nodeType;
+      if (nodeType == NodeType::Internal)
+      {
+        InternalNode<>* ptr = getUnusedNode<NodeType::Internal>();
+        memcpy(ptr,src,PAGE_SIZE);
+        // TODO figure out why it doesnt work
+        //*ptr=*src;
+        return ptr;
+      }
+      else if (nodeType == NodeType::Leaf)
+      {
+        LeafNode<>* ptr = getUnusedNode<NodeType::Leaf>();
+        memcpy(ptr,src,PAGE_SIZE);
+        //*ptr=*src;
+        return ptr;
+      }
+      throw BTreeException(fmt::format("Invalid Node Type"));
+    }, node);
+  }
+
+  std::fstream m_fileStream;
+  size_t m_fileLength{0};
+  size_t m_numPages;
+  std::vector<std::unique_ptr<InternalNode<>>> m_internalNodes{};
+  std::vector<std::unique_ptr<LeafNode<>>> m_leafNodes{};
+  // TODO maybe vecor instead of array?
+  // nodePtr has to be non owning since it is a variant of raw ptrs
+  std::array<nodePtr,MaxPages> m_pages{};
+  
+private:
+  // [[nodiscard]] std::unique_ptr<Page<>>& getPage(size_t pageNum) 
+  // {
+  //   if (pageNum > MaxPages) 
+  //   {
+  //     //fmt::print("Tried to fetch page number out of bounds. {} > {}\n", pageNum,MaxPages);
+  //     throw PagerException("Page Number out of bounds");
+  //   }
+
+  //   if (!m_pages[pageNum]) {
+  //     // Cache miss. Allocate memory and load from file.
+  //     // TODO construct inplace in array, then use ref to edit page
+  //     auto page = std::make_unique<Page<>>();
+  //     size_t num_pages = m_fileLength / PAGE_SIZE;
+
+  //     // We might save a partial page at the end of the file
+  //     if (m_fileLength % PAGE_SIZE) {
+  //       num_pages += 1;
+  //     }
+
+  //     if (pageNum < num_pages) {
+  //       m_fileStream.seekg(static_cast<std::streamoff>(pageNum * PAGE_SIZE), std::ios::beg);
+        
+  //       // read page or till eof
+  //       if(!m_fileStream.read(page->toBytes()->data(),PAGE_SIZE))
+  //       {
+  //         if(m_fileStream.eof())
+  //         {
+  //           // if eof then clear error state
+  //           m_fileStream.clear();
+  //         }
+  //         else
+  //         {
+  //           throw PagerException("Error reading file");
+  //         }
+  //       }
+        
+  //     }
+
+  //     m_pages[pageNum] = std::move(page);
+
+  //     if (pageNum >= m_numPages) 
+  //     {
+  //       m_numPages = pageNum + 1;
+  //     }
+  //   }
+
+  //   return m_pages[pageNum];
+  // }
+
+  template<NodeType nodeType>
+  [[nodiscard]] decltype(auto) getNode(size_t pageNum) 
   {
     if (pageNum > MaxPages) 
     {
@@ -95,10 +197,25 @@ public:
       throw PagerException("Page Number out of bounds");
     }
 
-    if (!m_pages[pageNum]) {
+    if (!IsNotNull(m_pages[pageNum])) 
+    {
       // Cache miss. Allocate memory and load from file.
       // TODO construct inplace in array, then use ref to edit page
-      auto page = std::make_unique<Page<>>();
+      nodePtr page;
+      if constexpr (nodeType == NodeType::Internal)
+      {
+        page = m_internalNodes.emplace_back(std::make_unique<InternalNode<>>()).get();
+
+      }
+      else if constexpr (nodeType == NodeType::Leaf)
+      {
+        page = m_leafNodes.emplace_back(std::make_unique<LeafNode<>>()).get();
+      }
+      else
+      {
+        throw BTreeException(fmt::format("Invalid Node Type"));
+      }
+      //auto page = std::make_unique<Page<>>();
       size_t num_pages = m_fileLength / PAGE_SIZE;
 
       // We might save a partial page at the end of the file
@@ -110,7 +227,10 @@ public:
         m_fileStream.seekg(static_cast<std::streamoff>(pageNum * PAGE_SIZE), std::ios::beg);
         
         // read page or till eof
-        if(!m_fileStream.read(page->m_memPool.data(),PAGE_SIZE))
+      
+        //if(!m_fileStream.read(page->toBytes()->data(),PAGE_SIZE))
+        auto bytes = std::visit([&](auto&& arg){return arg->toBytes()->data();},page);
+        if(!m_fileStream.read(bytes,PAGE_SIZE))
         {
           if(m_fileStream.eof())
           {
@@ -136,53 +256,61 @@ public:
     return m_pages[pageNum];
   }
 
-  [[nodiscard]] nodePtr fromPage(Page<>* page)
-  {
-      auto nodeType = *reinterpret_cast<NodeType*>(page);
-      //auto nodeType = static_cast<CommonNode*>(page)->Header()->m_nodeType;
-      switch (nodeType)
-      {
-      case (NodeType::Internal):
-          return reinterpret_cast<InternalNode<>*>(page);
-          break;
-      case (NodeType::Leaf):
-          return reinterpret_cast<LeafNode<>*>(page);
-          break;
-
-      }
-      throw BTreeException(fmt::format("Invalid Node Type"));
+  /*
+  Until we start recycling free pages, new pages will always
+  go onto the end of the database file
+  */
+  [[nodiscard]] size_t getUnusedPageNum() 
+  { 
+    return m_numPages; 
   }
 
-
   void flush(size_t pageNum) {
-    if (!m_pages[pageNum]) {
+    if (!IsNotNull(m_pages[pageNum])) {
       throw PagerException("Tried to flush null page");
     }
     if(!m_fileStream.seekp(static_cast<std::streamoff>(pageNum * PAGE_SIZE), std::ios::beg))
     {
       throw PagerException("Error seeking file");
     }
-    if(!m_fileStream.write(m_pages[pageNum]->m_memPool.data(), static_cast<std::streamsize>(PAGE_SIZE)))
+    if(!m_fileStream.write(std::visit([&](auto&& arg){return arg->toBytes()->data();},m_pages[pageNum]), static_cast<std::streamsize>(PAGE_SIZE)))
     {
       throw PagerException("Error writing file");
     }
   }
 
-  /*
-  Until we start recycling free pages, new pages will always
-  go onto the end of the database file
-  */
-  size_t getUnusedPageNum() 
-  { 
-    return m_numPages; 
-  }
+  // [[nodiscard]] nodePtr fromPage(Page<>* page)
+  // {
+  //     auto nodeType = *reinterpret_cast<NodeType*>(page);
+  //     //auto nodeType = static_cast<CommonNode*>(page)->Header()->m_nodeType;
+  //     switch (nodeType)
+  //     {
+  //     case (NodeType::Internal):
+  //         return reinterpret_cast<InternalNode<>*>(page);
+  //         break;
+  //     case (NodeType::Leaf):
+  //         return reinterpret_cast<LeafNode<>*>(page);
+  //         break;
 
-  std::fstream m_fileStream;
-  size_t m_fileLength{0};
-  size_t m_numPages;
-  // unique ptr because heap allocation is preffered for large sizes
-  // TODO maybe vecor instead of array?
-  std::array<std::unique_ptr<Page<>>,MaxPages> m_pages{};
+  //     }
+  //     throw BTreeException(fmt::format("Invalid Node Type"));
+  // }
+
+  // [[nodiscard]] std::unique_ptr<Page<>>& getUnusedPage() 
+  // { 
+  //   return getPage(getUnusedPageNum()); 
+  // }
+  bool IsNotNull(const nodePtr& ptr)
+  {
+      return std::visit([&](auto&& arg)->bool
+      {
+        if(arg)
+        {
+          return true;
+        }
+        return false;
+      },ptr);
+  }
 };
 
 

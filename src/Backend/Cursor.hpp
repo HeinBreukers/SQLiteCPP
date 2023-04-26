@@ -11,7 +11,7 @@ public:
   virtual ~CursorException() noexcept = default;
 };
 
-// Cursor iterates through BTree nodes
+// Cursor iterates over cells of BTree node
 class Cursor{
 public:
 
@@ -19,24 +19,20 @@ public:
   // TODO iterators
   void advance() 
   {
-    auto page = m_table.m_pager.fromPage(m_table.m_pager.getPage(m_table.m_rootPageNum).get()); 
-
     ++m_cellNum;
-    if (m_cellNum >= std::get<LeafNode<>*>(page)->m_header.m_numCells)
+    if (m_cellNum >= std::get<LeafNode<>*>(m_node)->m_header.m_numCells)
     {
       m_endOfTable = true;
     }
   }
 
   auto value() {
-    auto page = m_table.m_pager.fromPage(m_table.m_pager.getPage(m_pageNum).get());
-    return std::get<LeafNode<>*>(page)->m_cells[m_cellNum].m_value;
+    return std::get<LeafNode<>*>(m_node)->m_cells[m_cellNum].m_value;
   }
 
   void insert(uint32_t key, const Row& value)
   {
-    auto node = m_table.m_pager.fromPage(m_table.m_pager.getPage(m_pageNum).get());
-    auto* leafNode = std::get<LeafNode<>*>(node);
+    auto* leafNode = std::get<LeafNode<>*>(m_node);
 
     uint32_t num_cells = leafNode->m_header.m_numCells;
     if (num_cells >= LeafNode<>::maxCells()) {
@@ -49,13 +45,11 @@ public:
       // Make room for new cell
       for (uint32_t i = num_cells; i > m_cellNum; i--) {
         leafNode->m_cells[i] = leafNode->m_cells[i-1];
-        //memcpy(&(leafNode->m_cells[i]) ,&(leafNode->m_cells[i-1]) ,sizeof(LeafNodeCell));
       }
     }
     leafNode->m_header.m_numCells +=1;
     leafNode->m_cells[m_cellNum].m_key = key;
     leafNode->m_cells[m_cellNum].m_value = value;
-    //serialize_row(value, leafNode->Cell(m_cellNum)->m_value);
   }
 
   void leaf_node_split_and_insert([[maybe_unused]] uint32_t key, const Row& value) {
@@ -64,11 +58,8 @@ public:
     Insert the new value in one of the two nodes.
     Update parent or create a new parent.
     */
-    auto oldNode = m_table.m_pager.fromPage(m_table.m_pager.getPage(m_pageNum).get());
-    auto* oldLeafNode = std::get<LeafNode<>*>(oldNode);
-    size_t newPageNum = m_table.m_pager.getUnusedPageNum();
-    auto newNode = m_table.m_pager.fromPage(m_table.m_pager.getPage(newPageNum).get());
-    auto* newLeafNode = std::get<LeafNode<>*>(newNode);
+    auto* oldLeafNode = std::get<LeafNode<>*>(m_node);
+    auto* newLeafNode = m_table.m_pager.getUnusedNode<NodeType::Leaf>();
 
     // TODO proper init
     //newLeafNode->init();
@@ -91,48 +82,43 @@ public:
         destination.m_value = value;
       } else if (static_cast<size_t>(i) > m_cellNum) {
         destination = oldLeafNode->m_cells[static_cast<size_t>(i-1)];
-        //memcpy(destination, oldLeafNode->Cell(static_cast<size_t>(i)-1), sizeof(LeafNodeCell));
       } else {
         destination = oldLeafNode->m_cells[static_cast<size_t>(i)];
-        //memcpy(destination, oldLeafNode->Cell(static_cast<size_t>(i)), sizeof(LeafNodeCell));
       }
     }
     /* Update cell count on both leaf nodes */
     oldLeafNode->m_header.m_numCells = LeafNode<>::leftSplitCount();
     newLeafNode->m_header.m_numCells = LeafNode<>::rightSplitCount();
     if (oldLeafNode->m_header.m_isRoot) {
-      m_table.createNewRoot(newPageNum);
+      m_table.createNewRoot(newLeafNode);
     } else {
       throw CursorException("Need to implement updating parent after split");
     }
   }
 
   Table& m_table;
-  size_t m_pageNum;
+  nodePtr m_node;
   size_t m_cellNum;
-  bool m_endOfTable;  // Indicates a position one past the last element
+  bool m_endOfTable; // Indicates a position one past the last element
 };
 
 // TODO forward table?
 // TODO make member functions
 // TODO make leafNode generic inernal vs leaf node
 Cursor table_start(Table& table) {
-  auto root_node = table.m_pager.fromPage(table.m_pager.getPage(table.m_rootPageNum).get()); 
-  uint32_t num_cells = std::get<LeafNode<>*>(root_node)->m_header.m_numCells;
-  return Cursor{.m_table = table, .m_pageNum = table.m_rootPageNum, .m_cellNum = 0, .m_endOfTable = (num_cells == 0)};
+  uint32_t num_cells = std::get<LeafNode<>*>(table.m_root)->m_header.m_numCells;
+  return Cursor{.m_table = table, .m_node = table.m_root, .m_cellNum = 0, .m_endOfTable = (num_cells == 0)};
 }
 
 Cursor table_end(Table& table) {
-  auto root_node = table.m_pager.fromPage(table.m_pager.getPage(table.m_rootPageNum).get()); 
-  uint32_t num_cells = std::get<LeafNode<>*>(root_node)->m_header.m_numCells;
-  return Cursor{.m_table = table, .m_pageNum = table.m_rootPageNum, .m_cellNum = num_cells, .m_endOfTable = true};
+  uint32_t num_cells = std::get<LeafNode<>*>(table.m_root)->m_header.m_numCells;
+  return Cursor{.m_table = table, .m_node = table.m_root, .m_cellNum = num_cells, .m_endOfTable = true};
 
 
 }
 
-Cursor leaf_node_find(Table& table, size_t page_num, uint32_t key) 
+Cursor leaf_node_find(Table& table, nodePtr node, uint32_t key) 
 {
-  auto node = table.m_pager.fromPage(table.m_pager.getPage(page_num).get()); 
   auto* leafNode = std::get<LeafNode<>*>(node);
   uint32_t num_cells = leafNode->m_header.m_numCells;
 
@@ -144,7 +130,7 @@ Cursor leaf_node_find(Table& table, size_t page_num, uint32_t key)
     uint32_t index = (min_index + one_past_max_index) / 2;
     uint32_t key_at_index = leafNode->m_cells[index].m_key;
     if (key == key_at_index) {
-      return Cursor{.m_table = table, .m_pageNum = page_num, .m_cellNum = index, .m_endOfTable = (num_cells == 0)};
+      return Cursor{.m_table = table, .m_node = node, .m_cellNum = index, .m_endOfTable = (num_cells == 0)};
     }
     if (key < key_at_index) {
       one_past_max_index = index;
@@ -154,22 +140,19 @@ Cursor leaf_node_find(Table& table, size_t page_num, uint32_t key)
   }
 
   // TODO RVO is not possible because of if statement
-  return Cursor{.m_table = table, .m_pageNum = page_num, .m_cellNum = min_index, .m_endOfTable = (num_cells == 0)};
+  return Cursor{.m_table = table, .m_node = node, .m_cellNum = min_index, .m_endOfTable = (num_cells == 0)};
 }
 
 Cursor table_find(Table& table, uint32_t key) 
 {
-  auto* root_node = table.m_pager.getPage(table.m_rootPageNum).get(); 
-  auto node = table.m_pager.fromPage(root_node);
-
   return std::visit([&](auto&& arg) ->Cursor 
     {
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, InternalNode<>*>)
             throw CursorException("Need to implement searching an internal node");
         else if constexpr (std::is_same_v<T, LeafNode<>*>)
-            return leaf_node_find(table, table.m_rootPageNum, key);
-    }, node);
+            return leaf_node_find(table, table.m_root, key);
+    }, table.m_root);
 }
 
 

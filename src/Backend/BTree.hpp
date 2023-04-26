@@ -5,39 +5,12 @@
 #include <bit>
 #include <variant>
 
-//#include "Pager.hpp"
-//#include "OldBTree.hpp"
+#include "Row.hpp"
 
 inline constexpr size_t ROW_SIZE = 12;
+// TODO make size correspond with pagetable size is os
 inline constexpr size_t PAGE_SIZE = 4096;
 inline constexpr size_t TABLE_MAX_PAGES = 100;
-
-struct Row
-{
-  uint32_t id;
-  uint32_t age;
-  uint32_t lastvar;
-
-  void print()
-  {
-    fmt::print("id: {}, age: {}, lastvar: {}\n",id,age,lastvar);
-  }
-};
-
-// TODO move out of header
-std::vector<char> serialize_row(const Row& source) {
-    std::vector<char> destination(3*sizeof(uint32_t));
-    std::memcpy(&destination[0], &source, 3*sizeof(uint32_t)); 
-    return destination;
-}
-
-Row deserialize_row(std::span<char> source) {
-    Row destination;
-    std::memcpy(&destination, &source[0], 3*sizeof(uint32_t));
-    return destination;
-}
-
-
 
 class DBException : public std::exception 
 {
@@ -67,6 +40,30 @@ enum class NodeType: uint8_t
     Leaf
 };
 
+//Forward declares
+template<size_t PageSize = PAGE_SIZE>
+class LeafNode;
+template<size_t PageSize = PAGE_SIZE>
+class InternalNode;
+template<typename T> class traits;
+
+template<size_t PageSize>
+class traits<LeafNode<PageSize>>
+{
+public:
+    static constexpr size_t pageSize = PageSize;
+};
+
+
+template<size_t PageSize>
+class traits<InternalNode<PageSize>>
+{
+public:
+    static constexpr size_t pageSize = PageSize;
+};
+
+using nodePtr = std::variant<LeafNode<>*,InternalNode<>*>;
+
 struct Empty
 {};
 
@@ -76,9 +73,45 @@ class CommonNodeHeader
 public:
     NodeType m_nodeType;
     bool m_isRoot;
-    uint32_t* m_parent;
+    nodePtr m_parent;
 };
 #pragma pack()
+
+// CRTP base class Page
+template<typename Node>
+class Page
+{
+public:
+  static constexpr size_t pageSize = traits<Node>::pageSize;
+  std::array<char,pageSize>* toBytes()
+  {
+    return reinterpret_cast<std::array<char,pageSize>*>(this);
+  }
+  NodeType nodeType()
+  {
+    return commonNodeHeader()->m_nodeType;
+  }
+  bool isRoot()
+  {
+    return commonNodeHeader()->m_isRoot;
+  }
+  nodePtr parent()
+  {
+    return commonNodeHeader()->m_parent;
+  }
+protected:
+    // Page should only be inherited, and not be directly addressable
+    Page() = default;
+    Page(const Page&) = default;
+    Page(Page&&) = default;
+    ~Page() = default; 
+private:
+    CommonNodeHeader* commonNodeHeader()
+    {
+        return reinterpret_cast<CommonNodeHeader*>(this);
+    }
+};
+
 #pragma pack(1)
 class LeafNodeHeader : public CommonNodeHeader
 {
@@ -95,24 +128,20 @@ public:
 };
 #pragma pack()
 
-class CommonNode
-{
-// public: 
-//     CommonNodeHeader* Header()
+// class CommonNode
+// {
+
+// protected:
+//     void indent(uint32_t level) 
 //     {
-//         // TODO replace by bitcast
-//         return reinterpret_cast<CommonNodeHeader*>(&m_memPool[0]);
+//         for (uint32_t i = 0; i < level; i++) {
+//             fmt::print("  ");
+//         }
 //     }
+// };
 
-protected:
-    void indent(uint32_t level) 
-    {
-        for (uint32_t i = 0; i < level; i++) {
-            fmt::print("  ");
-        }
-    }
-};
 
+// TODO move out of header, will cause compilation conflicts
 void indent(uint32_t level) 
 {
     for (uint32_t i = 0; i < level; i++) {
@@ -121,31 +150,23 @@ void indent(uint32_t level)
 }
 
 
-template<size_t PageSize = PAGE_SIZE>
-class LeafNode;
-template<size_t PageSize = PAGE_SIZE>
-class InternalNode;
-
-using nodePtr = std::variant<LeafNode<>*,InternalNode<>*>;
-
-
 
 //TODO instead of pack(1) calculate alignment between header and array
 #pragma pack(1)
 template<size_t PageSize>
-class alignas(PageSize) LeafNode
+class alignas(PageSize) LeafNode: public Page<LeafNode<PageSize>>
 {
-private:
+public:
     static constexpr size_t pageSize = PageSize;
     static constexpr size_t numCells = (pageSize- sizeof(LeafNodeHeader))/sizeof(LeafNodeCell);
     static constexpr size_t filler   = (pageSize- sizeof(LeafNodeHeader)) - sizeof(std::array<LeafNodeCell,numCells>);
 public:
     LeafNode():
-    m_header(LeafNodeHeader{{NodeType::Leaf, false, nullptr}, 0})
+    m_header(LeafNodeHeader{{NodeType::Leaf, false, nodePtr{}}, 0})
     {
     }
 
-    LeafNode(bool isRoot, uint32_t* parent, uint32_t t_numCells):
+    LeafNode(bool isRoot, nodePtr parent, uint32_t t_numCells):
     m_header(LeafNodeHeader{{NodeType::Leaf, isRoot, parent}, t_numCells})
     {
     }
@@ -187,10 +208,11 @@ public:
     std::array<LeafNodeCell,numCells> m_cells;
 private:
     // empty filler for writing complete page to disk
-    [[no_unique_address]] std::conditional<(filler != 0) ,std::array<int,filler>, Empty>::type m_filler;
+    [[no_unique_address]] typename std::conditional<(filler != 0) ,std::array<uint8_t,filler>, Empty>::type m_filler;
 };
 #pragma pack()
 
+static_assert(sizeof(LeafNode<>)==PAGE_SIZE);
 
 #pragma pack(1)
 class InternalNodeHeader : public CommonNodeHeader
@@ -211,7 +233,7 @@ public:
 
 #pragma pack(1)
 template<size_t PageSize>
-class alignas(PageSize) InternalNode
+class alignas(PageSize) InternalNode: public Page<InternalNode<PageSize>>
 {
 private:
     static constexpr size_t pageSize = PageSize;
@@ -219,11 +241,11 @@ private:
     static constexpr size_t filler   = (pageSize- sizeof(InternalNodeHeader)) - sizeof(std::array<InternalNodeCell,numCells>);
 public:
     InternalNode():
-    m_header(InternalNodeHeader{{NodeType::Internal, false, nullptr}, 0, nodePtr{} })
+    m_header(InternalNodeHeader{{NodeType::Internal, false, nodePtr{}}, 0, nodePtr{} })
     {
     }
 
-    InternalNode(bool isRoot, uint32_t* parent, uint32_t numKeys, nodePtr rightChild):
+    InternalNode(bool isRoot, nodePtr parent, uint32_t numKeys, nodePtr rightChild):
     m_header(InternalNodeHeader{{NodeType::Internal, isRoot, parent}, numKeys, rightChild})
     {
     }
@@ -251,7 +273,17 @@ public:
     std::array<InternalNodeCell,numCells> m_cells;
 private:
     // empty filler for writing complete page to disk
-    [[no_unique_address]] std::conditional<(filler != 0),std::array<int,filler>, Empty>::type m_filler;
+    [[no_unique_address]] typename std::conditional<(filler != 0),std::array<uint8_t,filler>, Empty>::type m_filler;
 };
 #pragma pack()
 
+static_assert(sizeof(InternalNode<>)==PAGE_SIZE);
+
+// void copyNode(const nodePtr& from, nodePtr& to)
+// {
+//     if(from.index()!=to.index())
+//     {
+//         throw BTreeException(fmt::format("Tried to copy from {} to {}", from.index(), to.index()));
+//     }
+//     std::visit( []<typename T>(T&& src, T&& dest){ *dest = *src; }, from,to);
+// }

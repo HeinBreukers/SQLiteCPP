@@ -35,7 +35,7 @@ struct Statement
 
 
 ExecuteResult execute_insert(const Statement& statement, Table& table) {
-  auto node = table.m_pager.fromPage(table.m_pager.getPage(table.m_rootPageNum).get());
+  auto node = table.m_root;
   auto* leafNode = std::get<LeafNode<>*>(node);
 
   auto numCells = leafNode->m_header.m_numCells;
