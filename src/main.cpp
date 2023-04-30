@@ -2,7 +2,7 @@
 #include "Core/VirtualMachine.hpp"
 #include "Backend/Pager.hpp"
 #include "CLI/Command.hpp"
-
+#include "NodePtr.hpp"
 
 
 void print_prompt() 

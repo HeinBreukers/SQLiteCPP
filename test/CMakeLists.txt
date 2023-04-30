@@ -20,6 +20,11 @@ FetchContent_MakeAvailable(fmt)
 #set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/Backend)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/Backend/BTree)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/CLI)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/Core)
+
 add_executable(
   MainTest
   MainTest.cpp

@@ -3,6 +3,7 @@
 #include "Pager.hpp"
 #include "Table.hpp"
 #include "BTree.hpp"
+#include "NodePtr.hpp"
 
 class CursorException : public DBException 
 {
@@ -20,19 +21,26 @@ public:
   void advance() 
   {
     ++m_cellNum;
-    if (m_cellNum >= std::get<LeafNode<>*>(m_node)->m_header.m_numCells)
+    if (m_cellNum >= std::get<LeafNode<>*>(m_node.ptr)->m_header.m_numCells)
     {
       m_endOfTable = true;
     }
   }
 
+  // PreIncrement
+  Cursor& operator++()
+  {
+    advance();
+    return *this;
+  } 	
+
   auto value() {
-    return std::get<LeafNode<>*>(m_node)->m_cells[m_cellNum].m_value;
+    return std::get<LeafNode<>*>(m_node.ptr)->m_cells[m_cellNum].m_value;
   }
 
   void insert(uint32_t key, const Row& value)
   {
-    auto* leafNode = std::get<LeafNode<>*>(m_node);
+    auto* leafNode = std::get<LeafNode<>*>(m_node.ptr);
 
     uint32_t num_cells = leafNode->m_header.m_numCells;
     if (num_cells >= LeafNode<>::maxCells()) {
@@ -58,11 +66,9 @@ public:
     Insert the new value in one of the two nodes.
     Update parent or create a new parent.
     */
-    auto* oldLeafNode = std::get<LeafNode<>*>(m_node);
+    auto* oldLeafNode = std::get<LeafNode<>*>(m_node.ptr);
     auto* newLeafNode = m_table.m_pager.getUnusedNode<NodeType::Leaf>();
 
-    // TODO proper init
-    //newLeafNode->init();
     /*
     All existing keys plus new key should be divided
     evenly between old (left) and new (right) nodes.
@@ -97,31 +103,17 @@ public:
   }
 
   Table& m_table;
-  nodePtr m_node;
+  NodePtr m_node;
   size_t m_cellNum;
   bool m_endOfTable; // Indicates a position one past the last element
 };
 
-// TODO forward table?
-// TODO make member functions
-// TODO make leafNode generic inernal vs leaf node
-Cursor table_start(Table& table) {
-  uint32_t num_cells = std::get<LeafNode<>*>(table.m_root)->m_header.m_numCells;
-  return Cursor{.m_table = table, .m_node = table.m_root, .m_cellNum = 0, .m_endOfTable = (num_cells == 0)};
-}
-
-Cursor table_end(Table& table) {
-  uint32_t num_cells = std::get<LeafNode<>*>(table.m_root)->m_header.m_numCells;
-  return Cursor{.m_table = table, .m_node = table.m_root, .m_cellNum = num_cells, .m_endOfTable = true};
 
 
-}
-
-Cursor leaf_node_find(Table& table, nodePtr node, uint32_t key) 
+Cursor leaf_node_find(Table& table, NodePtr node, uint32_t key) 
 {
-  auto* leafNode = std::get<LeafNode<>*>(node);
+  auto* leafNode = std::get<LeafNode<>*>(node.ptr);
   uint32_t num_cells = leafNode->m_header.m_numCells;
-
 
   // Binary search
   uint32_t min_index = 0;
@@ -145,6 +137,7 @@ Cursor leaf_node_find(Table& table, nodePtr node, uint32_t key)
 
 Cursor table_find(Table& table, uint32_t key) 
 {
+  //throw CursorException("Need to implement searching an internal node");
   return std::visit([&](auto&& arg) ->Cursor 
     {
         using T = std::decay_t<decltype(arg)>;
@@ -152,7 +145,21 @@ Cursor table_find(Table& table, uint32_t key)
             throw CursorException("Need to implement searching an internal node");
         else if constexpr (std::is_same_v<T, LeafNode<>*>)
             return leaf_node_find(table, table.m_root, key);
-    }, table.m_root);
+    }, table.m_root.ptr);
+}
+
+// TODO forward table?
+// TODO make member functions
+// TODO make leafNode generic inernal vs leaf node
+Cursor table_start(Table& table) {
+  Cursor cursor =  table_find(table, 0);
+  //cursor.m_endOfTable= table.m_pager.
+  uint32_t num_cells = std::get<LeafNode<>*>(cursor.m_node.ptr)->m_header.m_numCells;
+  cursor.m_endOfTable = (num_cells == 0);
+
+  return cursor;
+  // uint32_t num_cells = table.m_root->m_header.m_numKeys;
+  // return Cursor{.m_table = table, .m_node = table.m_root, .m_cellNum = 0, .m_endOfTable = (num_cells == 0)};
 }
 
 

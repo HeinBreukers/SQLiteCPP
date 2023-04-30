@@ -23,17 +23,12 @@ public:
         // New database file. Initialize page 0 as leaf node.
         // TODO make sure pager properly inits nodes
         //m_root = m_pager.fromPage(m_pager.getPage(0).get());
-        auto leafNode = std::get<LeafNode<>*>(m_root);
+        m_root = m_pager.getRoot();
+        //auto leafNode = std::get<LeafNode<>*>(m_root.ptr);
         //leafNode->init();
-        leafNode->m_header.m_isRoot = true;
+        m_root.isRoot()=true;
       }
   }
-
-  // ~Table()
-  // {
-
-
-  // }
 
   // delete copy and move constructors because table flushes on destruction and pager has deleted copy constructor
   Table(const Table&) = delete;
@@ -51,36 +46,31 @@ public:
     New root node points to two children.
     */
 
-    // TODO create proper factory where node is returned instead of page
-
     // Handle splitting the root.
-    auto* rootNode = std::get<InternalNode<>*>(m_root);
-    //auto* rightChildPage = m_pager.getPage(rightChildPageNum).get();
-    //auto rightChild = m_pager.fromPage(rightChildPage);
+    // TODO isnt always internalNode -> force root node to always be internal node
+    auto oldRoot = m_root;
+    oldRoot.isRoot()=false;
     
     // Old root copied to new page, becomes left child.
-    auto leftChild = m_pager.copyToNewNode(m_root);
-    std::visit( [](auto&& node){ node->m_header.m_isRoot=false; }, leftChild);
-    
-    /* Root node is a new internal node with one key and two children */
-    //rootNode->init();
-    rootNode->m_header.m_isRoot = true;
-    rootNode->m_header.m_numKeys = 1;
-    rootNode->m_cells[0].m_child = leftChild;
-    uint32_t left_child_max_key =  std::visit([](auto&& arg)-> uint32_t {return arg->maxKey();}, leftChild);
-    rootNode->m_cells[0].m_key = left_child_max_key;
-    rootNode->m_header.m_rightChild = rightChild;
-  }
+    // Create new internal node
+    auto* newRoot = m_pager.getUnusedNode<NodeType::Internal>();
+    // move new root to start of pager 
+    m_pager.m_pages[0] = newRoot;
+    // move old root to end of pager 
+    m_pager.m_pages[1] = oldRoot;
 
+    /* Root node is a new internal node with one key and two children */
+    newRoot->m_header.m_isRoot = true;
+    newRoot->m_header.m_numKeys = 1;
+    newRoot->m_cells[0].m_child = oldRoot.ptr;
+    uint32_t left_child_max_key = newRoot->maxKey();
+    newRoot->m_cells[0].m_key = left_child_max_key;
+    newRoot->m_header.m_rightChild = rightChild;
+    m_root=newRoot;
+  }
   
 //private:
   Pager<> m_pager;
-  //size_t m_rootPageNum;
-
-  // BTree 
-  nodePtr m_root;
-  //std::vector<std::unique_ptr<InternalNode<>>> m_internalNodes{};
-  //std::vector<std::unique_ptr<LeafNode<>>> m_leafNodes{};
-  
+  NodePtr m_root;
 };
 

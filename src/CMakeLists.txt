@@ -15,7 +15,10 @@ FetchContent_Declare(fmt
 
 FetchContent_MakeAvailable(fmt)
 
-include_directories(FFT)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/Backend)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/Backend/BTree)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/CLI)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/Core)
 
 set(SOURCE_FILES 
 main.cpp)

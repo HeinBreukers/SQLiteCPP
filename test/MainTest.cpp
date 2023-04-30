@@ -105,7 +105,7 @@ TEST_F(DBTest, Persistance) {
   EXPECT_EQ(metaCommand.exit, true);
   // Table does not have explicit destructor anymore 
   // TODO make DB class that behaves like an actual executable
-  table.~Table();
+  //table.~Table();
 
 
   Table newTable{filename};

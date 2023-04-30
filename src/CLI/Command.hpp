@@ -19,18 +19,16 @@ public:
       //exit(EXIT_SUCCESS);
       return MetaCommandResult::SUCCESS;
     } 
-    else if (input_buffer ==  ".btree") 
+    if (input_buffer ==  ".btree") 
     {
      fmt::print("Tree:\n");
      auto node = table.m_root;
-     std::visit([&](auto&& arg){arg->print();}, node);
+     node.print();
      //auto* leafNode = static_cast<LeafNode*>(node);
      //leafNode->print();
      return MetaCommandResult::SUCCESS;
     }
-    else {
-      return MetaCommandResult::UNRECOGNIZED_COMMAND;
-    }
+    return MetaCommandResult::UNRECOGNIZED_COMMAND;
   }
 
   bool exit = false;

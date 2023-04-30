@@ -32,18 +32,15 @@ struct Statement
     Row row_to_insert;
 };
 
-
-
+//TODO move defination to cpp file
 ExecuteResult execute_insert(const Statement& statement, Table& table) {
-  auto node = table.m_root;
-  auto* leafNode = std::get<LeafNode<>*>(node);
-
-  auto numCells = leafNode->m_header.m_numCells;
-
   auto& row_to_insert = statement.row_to_insert;
-
   uint32_t key_to_insert = row_to_insert.id;
   auto cursor = table_find(table, key_to_insert);
+
+  auto* leafNode = std::get<LeafNode<>*>(cursor.m_node.ptr);
+  auto numCells = leafNode->m_header.m_numCells;
+
   if (cursor.m_cellNum < numCells) {
     uint32_t key_at_index = leafNode->m_cells[cursor.m_cellNum].m_key;
     if (key_at_index == key_to_insert) {
@@ -54,6 +51,7 @@ ExecuteResult execute_insert(const Statement& statement, Table& table) {
 
   return ExecuteResult::SUCCESS;
 }
+
 
 ExecuteResult execute_select(Table& table) {
   auto cursor = table_start(table);
