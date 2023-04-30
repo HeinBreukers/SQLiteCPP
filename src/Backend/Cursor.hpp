@@ -110,9 +110,9 @@ public:
 
 
 
-Cursor leaf_node_find(Table& table, NodePtr node, uint32_t key) 
+Cursor leaf_node_find(Table& table, nodePtr node, uint32_t key) 
 {
-  auto* leafNode = std::get<LeafNode<>*>(node.ptr);
+  auto* leafNode = std::get<LeafNode<>*>(node);
   uint32_t num_cells = leafNode->m_header.m_numCells;
 
   // Binary search
@@ -122,7 +122,7 @@ Cursor leaf_node_find(Table& table, NodePtr node, uint32_t key)
     uint32_t index = (min_index + one_past_max_index) / 2;
     uint32_t key_at_index = leafNode->m_cells[index].m_key;
     if (key == key_at_index) {
-      return Cursor{.m_table = table, .m_node = node, .m_cellNum = index, .m_endOfTable = (num_cells == 0)};
+      return Cursor{.m_table = table, .m_node = NodePtr{node}, .m_cellNum = index, .m_endOfTable = (num_cells == 0)};
     }
     if (key < key_at_index) {
       one_past_max_index = index;
@@ -132,7 +132,37 @@ Cursor leaf_node_find(Table& table, NodePtr node, uint32_t key)
   }
 
   // TODO RVO is not possible because of if statement
-  return Cursor{.m_table = table, .m_node = node, .m_cellNum = min_index, .m_endOfTable = (num_cells == 0)};
+  return Cursor{.m_table = table, .m_node = NodePtr{node}, .m_cellNum = min_index, .m_endOfTable = (num_cells == 0)};
+}
+
+Cursor internal_node_find(Table& table, nodePtr node, uint32_t key) 
+{
+  auto* internalNode = std::get<InternalNode<>*>(node);
+  uint32_t num_keys = internalNode->m_header.m_numKeys;
+
+  /* Binary search to find index of child to search */
+  uint32_t min_index = 0;
+  uint32_t max_index = num_keys; /* there is one more child than key */
+
+  while (min_index != max_index) {
+    uint32_t index = (min_index + max_index) / 2;
+    uint32_t key_to_right = internalNode->m_cells[index].m_key;
+    if (key_to_right >= key) {
+      max_index = index;
+    } else {
+      min_index = index + 1;
+    }
+  }
+
+  nodePtr child = internalNode->m_cells[min_index].m_child;
+  return std::visit([&](auto&& arg) ->Cursor 
+    {
+      using T = std::decay_t<decltype(arg)>;
+      if constexpr (std::is_same_v<T, InternalNode<>*>)
+          return internal_node_find(table, child, key);
+      else if constexpr (std::is_same_v<T, LeafNode<>*>)
+          return leaf_node_find(table, child, key);
+    }, child);
 }
 
 Cursor table_find(Table& table, uint32_t key) 
@@ -144,7 +174,7 @@ Cursor table_find(Table& table, uint32_t key)
         if constexpr (std::is_same_v<T, InternalNode<>*>)
             throw CursorException("Need to implement searching an internal node");
         else if constexpr (std::is_same_v<T, LeafNode<>*>)
-            return leaf_node_find(table, table.m_root, key);
+            return leaf_node_find(table, table.m_root.ptr, key);
     }, table.m_root.ptr);
 }
 
