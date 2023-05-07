@@ -17,6 +17,7 @@ enum class PrepareResult
     UNRECOGNIZED_STATEMENT 
 };
 
+// TODO move out of header
 PrepareResult prepare_statement(const std::string& input_buffer, Statement& statement) 
 {
   if (input_buffer.starts_with("insert")) {
@@ -24,7 +25,7 @@ PrepareResult prepare_statement(const std::string& input_buffer, Statement& stat
     std::stringstream s;
     s.str(input_buffer.substr(7));
     auto& row = statement.row_to_insert;
-    s >>row.id >> row.age >> row.lastvar;
+    s >>row.id >> row.age >> row.lastvar[0];
     if (s.fail()) {
       return PrepareResult::SYNTAX_ERROR;
     }

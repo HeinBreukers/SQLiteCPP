@@ -13,7 +13,7 @@ void print_prompt()
 int main(/*int argc, char* argv[]*/) 
 {
   std::string input_buffer;
-  std::string dbFile = "file.db";
+  const std::string dbFile = "file.db";
   Table table(dbFile);
   MetaCommand metaCommand;
   while (!metaCommand.exit) {
@@ -30,7 +30,7 @@ int main(/*int argc, char* argv[]*/)
       }
     } 
 
-    Statement statement;
+    Statement statement{};
     switch (prepare_statement(input_buffer, statement)) {
       case (PrepareResult::SUCCESS):
         break;
@@ -42,7 +42,7 @@ int main(/*int argc, char* argv[]*/)
         continue;
     }
 
-    switch (execute_statement(statement, table).value()) {
+    switch (execute_statement(statement, table)) {
       case (ExecuteResult::SUCCESS):
         fmt::print("Executed.\n");
         break;

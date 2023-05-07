@@ -14,7 +14,7 @@ public:
   DBException(const std::string& msg) : message(fmt::format("DB Exception {}",msg)) {}
   virtual ~DBException() noexcept = default;
 
-  const char* what() const noexcept override
+  [[nodiscard]] const char* what() const noexcept override
   {
     return message.c_str();
   }
@@ -42,7 +42,7 @@ class CommonNodeHeader
 public:
     NodeType m_nodeType;
     bool m_isRoot;
-    nodePtr m_parent;
+    intType m_parent;
 };
 #pragma pack()
 
@@ -71,6 +71,11 @@ public:
     nodePtr& parent()
     {
         return commonNodeHeader()->m_parent;
+    }
+
+    uint32_t maxKey()
+    {
+        return static_cast<Node*>(this)->maxKey();
     }
 
     static void indent(uint32_t level) 

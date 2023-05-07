@@ -77,7 +77,7 @@ TEST_F(DBTest, ExecuteInsert) {
 
   std::string input = "insert 1 2 3";
   prepare_statement(input, statement);
-  auto res = execute_statement(statement, table).value();
+  auto res = execute_statement(statement, table);
   EXPECT_EQ(res,ExecuteResult::SUCCESS);
 }
 
@@ -85,12 +85,12 @@ TEST_F(DBTest, ExecuteSelect) {
   
   std::string input = "insert 1 2 3";
   prepare_statement(input, statement);
-  execute_statement(statement, table).value();
+  execute_statement(statement, table);
 
   input = "select";
   prepare_statement(input, statement);
   testing::internal::CaptureStdout();
-  auto res = execute_statement(statement, table).value();
+  auto res = execute_statement(statement, table);
   std::string output = testing::internal::GetCapturedStdout();
   EXPECT_EQ(res,ExecuteResult::SUCCESS);
   EXPECT_EQ(output,"id: 1, age: 2, lastvar: 3\n");
@@ -99,7 +99,7 @@ TEST_F(DBTest, ExecuteSelect) {
 TEST_F(DBTest, Persistance) {
   std::string input = "insert 1 2 3";
   prepare_statement(input, statement);
-  execute_statement(statement, table).value();
+  execute_statement(statement, table);
   input = ".exit";
   metaCommand.do_meta_command(input,table);
   EXPECT_EQ(metaCommand.exit, true);
@@ -112,7 +112,7 @@ TEST_F(DBTest, Persistance) {
   input = "select";
   prepare_statement(input, statement);
   testing::internal::CaptureStdout();
-  auto res = execute_statement(statement, newTable).value();
+  auto res = execute_statement(statement, newTable);
   std::string output = testing::internal::GetCapturedStdout();
   EXPECT_EQ(res,ExecuteResult::SUCCESS);
   EXPECT_EQ(output,"id: 1, age: 2, lastvar: 3\n");

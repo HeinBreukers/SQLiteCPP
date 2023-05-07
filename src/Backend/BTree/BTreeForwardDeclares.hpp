@@ -29,9 +29,12 @@ public:
     static constexpr size_t pageSize = PageSize;
 };
 
+using intType = std::conditional<sizeof(void*)==sizeof(int64_t),int64_t,int32_t>::type;
 using nodePtr = std::variant<LeafNode<>*,InternalNode<>*>;
 
 struct Empty
 {
     Empty() = default;
 };
+
+struct Pager;

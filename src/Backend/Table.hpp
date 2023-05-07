@@ -18,16 +18,12 @@ public:
   m_root(m_pager.getRoot())
   {
       // TODO move to pager constructor
-      if (m_pager.m_numPages == 0) 
-      {
-        // New database file. Initialize page 0 as leaf node.
-        // TODO make sure pager properly inits nodes
-        //m_root = m_pager.fromPage(m_pager.getPage(0).get());
-        m_root = m_pager.getRoot();
-        //auto leafNode = std::get<LeafNode<>*>(m_root.ptr);
-        //leafNode->init();
-        m_root.isRoot()=true;
-      }
+      // if (m_pager.m_numPages == 0) 
+      // {
+      //   // New database file. Initialize page 0 as leaf node.
+      //   m_root = m_pager.getUnusedNode<NodeType::Leaf>();// m_pager.getRoot();
+      //   m_root.isRoot()=true;
+      // }
   }
 
   // delete copy and move constructors because table flushes on destruction and pager has deleted copy constructor
@@ -35,8 +31,9 @@ public:
   Table(Table&&) = delete;
   Table& operator=(const Table&) = delete;
   Table& operator=(Table&&) = delete;
+  ~Table() = default;
 
-  void createNewRoot(const nodePtr& rightChild) 
+  void createNewRoot(intType rightChildIndex) 
   {
     /*
     Handle splitting the root.
@@ -47,30 +44,33 @@ public:
     */
 
     // Handle splitting the root.
-    // TODO isnt always internalNode -> force root node to always be internal node
     auto oldRoot = m_root;
     oldRoot.isRoot()=false;
     
+    
     // Old root copied to new page, becomes left child.
     // Create new internal node
-    auto* newRoot = m_pager.getUnusedNode<NodeType::Internal>();
+    auto [newIndex,newRootPtr] = m_pager.getUnusedNode<NodeType::Internal>();
+    auto* newRoot = std::get<InternalNode<>*>(newRootPtr.ptr);
     // move new root to start of pager 
-    m_pager.m_pages[0] = newRoot;
+    m_pager.at(0) = newRootPtr;
     // move old root to end of pager 
-    m_pager.m_pages[1] = oldRoot;
+    m_pager.at(m_pager.m_numPages-1) = oldRoot;
 
     /* Root node is a new internal node with one key and two children */
     newRoot->m_header.m_isRoot = true;
     newRoot->m_header.m_numKeys = 1;
-    newRoot->m_cells[0].m_child = oldRoot.ptr;
-    uint32_t left_child_max_key = newRoot->maxKey();
+    newRoot->m_cells[0].m_child = newIndex;
+    const uint32_t left_child_max_key = oldRoot.maxKey();
     newRoot->m_cells[0].m_key = left_child_max_key;
-    newRoot->m_header.m_rightChild = rightChild;
-    m_root=newRoot;
+    newRoot->m_header.m_rightChild = rightChildIndex;
+    m_root=newRootPtr;
+    // TODO
+    //oldRoot.parent()=m_root;
   }
   
 //private:
-  Pager<> m_pager;
+  Pager m_pager;
   NodePtr m_root;
 };
 

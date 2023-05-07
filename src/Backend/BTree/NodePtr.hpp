@@ -12,22 +12,22 @@ class NodePtr
 public:
     NodePtr() = default;
 
-    explicit NodePtr(const nodePtr& nPtr):
+    NodePtr(const nodePtr& nPtr):
     ptr(nPtr)
     {}
 
     // TODO make concept isNodeType
-    template<typename Node> requires (std::is_same_v<std::decay_t<Node>,LeafNode<>*> || std::is_same_v<std::decay_t<Node>,InternalNode<>*>)
-    NodePtr(Node&& nPtr):
-    ptr(std::forward<Node>(nPtr))
-    {}
+    // template<typename Node> requires (std::is_same_v<std::decay_t<Node>,LeafNode<>*> || std::is_same_v<std::decay_t<Node>,InternalNode<>*>)
+    // NodePtr(Node&& nPtr):
+    // ptr(std::forward<Node>(nPtr))
+    // {}
 
-    template<typename Node> requires (std::is_same_v<std::decay_t<Node>,LeafNode<>*> || std::is_same_v<std::decay_t<Node>,InternalNode<>*>)
-    NodePtr& operator=(Node&& nPtr)
-    {
-        ptr = std::forward<Node>(nPtr);
-        return *this;
-    }
+    // template<typename Node> requires (std::is_same_v<std::decay_t<Node>,LeafNode<>*> || std::is_same_v<std::decay_t<Node>,InternalNode<>*>)
+    // NodePtr& operator=(Node&& nPtr)
+    // {
+    //     ptr = std::forward<Node>(nPtr);
+    //     return *this;
+    // }
 
     explicit operator bool () const 
     { 
@@ -40,13 +40,8 @@ public:
         return *this;
     }
 
-    void print() const
-    {
-        std::visit([](auto&& t_ptr)->void
-        {
-           t_ptr->print();
-        },ptr);
-    };
+    void print(Pager* pager) const;
+
 
     [[nodiscard]] NodeType nodeType() const
     {
@@ -72,15 +67,24 @@ public:
         },ptr);
     }
 
-    [[nodiscard]] NodePtr parent() const
+    [[nodiscard]] intType parent() const
     {
-        return NodePtr{std::visit([](auto&& t_ptr)
+        return std::visit([](auto&& t_ptr)
         {
             return t_ptr->m_header.m_parent;
-        },ptr)};
+        },ptr);
+    }
+
+    [[nodiscard]] uint32_t maxKey()
+    {
+        return std::visit([](auto&& t_ptr) ->uint32_t
+        {
+            return t_ptr->maxKey();
+        },ptr);
     }
 
     nodePtr ptr;
+    
 private:
     static void copy(const nodePtr& src, nodePtr& dest)
     {
@@ -97,7 +101,7 @@ private:
         }, src, dest);
     }
 
-    [[nodiscard]] bool IsNotNull() const noexcept
+    [[nodiscard]] bool IsNotNull() const
     {
         return std::visit([](auto&& t_ptr)->bool
         {

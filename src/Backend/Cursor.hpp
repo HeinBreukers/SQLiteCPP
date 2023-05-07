@@ -42,8 +42,8 @@ public:
   {
     auto* leafNode = std::get<LeafNode<>*>(m_node.ptr);
 
-    uint32_t num_cells = leafNode->m_header.m_numCells;
-    if (num_cells >= LeafNode<>::maxCells()) {
+    const uint32_t num_cells = leafNode->m_header.m_numCells;
+    if (num_cells >= LeafNode<>::maxCells) {
       // Node full
       leaf_node_split_and_insert(key, value);
       return;
@@ -60,35 +60,47 @@ public:
     leafNode->m_cells[m_cellNum].m_value = value;
   }
 
-  void leaf_node_split_and_insert([[maybe_unused]] uint32_t key, const Row& value) {
+  void leaf_node_split_and_insert(uint32_t key, const Row& value) {
     /*
     Create a new node and move half the cells over.
     Insert the new value in one of the two nodes.
     Update parent or create a new parent.
     */
     auto* oldLeafNode = std::get<LeafNode<>*>(m_node.ptr);
-    auto* newLeafNode = m_table.m_pager.getUnusedNode<NodeType::Leaf>();
-
+    auto [newLeafNodeIndex,newLeafNodePtr] = m_table.m_pager.getUnusedNode<NodeType::Leaf>();
+    auto* newLeafNode = std::get<LeafNode<>*>(newLeafNodePtr.ptr);
     /*
     All existing keys plus new key should be divided
     evenly between old (left) and new (right) nodes.
     Starting from the right, move each key to correct position.
     */
-    for (int32_t i = LeafNode<>::maxCells(); i >= 0; i--) {
-      LeafNode<>* destination_node;
-      if (static_cast<size_t>(i) >= LeafNode<>::leftSplitCount()) {
-        destination_node = newLeafNode;
-      } else {
-        destination_node = oldLeafNode;
-      }
+    for (int32_t i = LeafNode<>::maxCells; i >= 0; i--) {
+      LeafNode<>* destination_node = [&]()
+      {
+        if (static_cast<size_t>(i) >= LeafNode<>::leftSplitCount()) 
+        {
+          return newLeafNode;
+        } 
+        else 
+        {
+          return oldLeafNode;
+        }
+      }();
+      
       size_t index_within_node = static_cast<size_t>(i) % LeafNode<>::leftSplitCount();
       LeafNodeCell& destination = destination_node->m_cells[index_within_node];
 
-      if (static_cast<size_t>(i) == m_cellNum) {
+      if (static_cast<size_t>(i) == m_cellNum) 
+      {
         destination.m_value = value;
-      } else if (static_cast<size_t>(i) > m_cellNum) {
+        destination.m_key = key;
+      } 
+      else if (static_cast<size_t>(i) > m_cellNum) 
+      {
         destination = oldLeafNode->m_cells[static_cast<size_t>(i-1)];
-      } else {
+      } 
+      else 
+      {
         destination = oldLeafNode->m_cells[static_cast<size_t>(i)];
       }
     }
@@ -96,12 +108,13 @@ public:
     oldLeafNode->m_header.m_numCells = LeafNode<>::leftSplitCount();
     newLeafNode->m_header.m_numCells = LeafNode<>::rightSplitCount();
     if (oldLeafNode->m_header.m_isRoot) {
-      m_table.createNewRoot(newLeafNode);
+      m_table.createNewRoot(newLeafNodeIndex);
     } else {
       throw CursorException("Need to implement updating parent after split");
     }
   }
 
+  // TODO ref data member to smart ptr(or something else)
   Table& m_table;
   NodePtr m_node;
   size_t m_cellNum;
@@ -109,20 +122,20 @@ public:
 };
 
 
-
-Cursor leaf_node_find(Table& table, nodePtr node, uint32_t key) 
+// TODO move out of header
+Cursor leaf_node_find(Table& table, NodePtr node, uint32_t key) 
 {
-  auto* leafNode = std::get<LeafNode<>*>(node);
-  uint32_t num_cells = leafNode->m_header.m_numCells;
+  auto* leafNode = std::get<LeafNode<>*>(node.ptr);
+  const uint32_t num_cells = leafNode->m_header.m_numCells;
 
   // Binary search
   uint32_t min_index = 0;
   uint32_t one_past_max_index = num_cells;
   while (one_past_max_index != min_index) {
-    uint32_t index = (min_index + one_past_max_index) / 2;
-    uint32_t key_at_index = leafNode->m_cells[index].m_key;
+    const uint32_t index = (min_index + one_past_max_index) / 2;
+    const uint32_t key_at_index = leafNode->m_cells[index].m_key;
     if (key == key_at_index) {
-      return Cursor{.m_table = table, .m_node = NodePtr{node}, .m_cellNum = index, .m_endOfTable = (num_cells == 0)};
+      return Cursor{.m_table = table, .m_node = node, .m_cellNum = index, .m_endOfTable = (num_cells == 0)};
     }
     if (key < key_at_index) {
       one_past_max_index = index;
@@ -132,29 +145,44 @@ Cursor leaf_node_find(Table& table, nodePtr node, uint32_t key)
   }
 
   // TODO RVO is not possible because of if statement
-  return Cursor{.m_table = table, .m_node = NodePtr{node}, .m_cellNum = min_index, .m_endOfTable = (num_cells == 0)};
+  return Cursor{.m_table = table, .m_node = node, .m_cellNum = min_index, .m_endOfTable = (num_cells == 0)};
 }
 
-Cursor internal_node_find(Table& table, nodePtr node, uint32_t key) 
+// TODO move out of header
+Cursor internal_node_find(Table& table, NodePtr node, uint32_t key) 
 {
-  auto* internalNode = std::get<InternalNode<>*>(node);
-  uint32_t num_keys = internalNode->m_header.m_numKeys;
+  auto* internalNode = std::get<InternalNode<>*>(node.ptr);
+  const uint32_t num_keys = internalNode->m_header.m_numKeys;
 
   /* Binary search to find index of child to search */
   uint32_t min_index = 0;
   uint32_t max_index = num_keys; /* there is one more child than key */
 
   while (min_index != max_index) {
-    uint32_t index = (min_index + max_index) / 2;
-    uint32_t key_to_right = internalNode->m_cells[index].m_key;
+    const uint32_t index = (min_index + max_index) / 2;
+    const uint32_t key_to_right = internalNode->m_cells[index].m_key;
     if (key_to_right >= key) {
       max_index = index;
     } else {
       min_index = index + 1;
     }
   }
+  
 
-  nodePtr child = internalNode->m_cells[min_index].m_child;
+  // TODO maybe move implementation
+  NodePtr child = [&]()->NodePtr
+  {
+    if (min_index == num_keys) 
+    {
+      auto index = internalNode->m_header.m_rightChild;
+      return table.m_pager.at(static_cast<size_t>(index));
+    } 
+    auto index = internalNode->m_cells[min_index].m_child;
+    return table.m_pager.at(static_cast<size_t>(index));
+  }();
+  //internalNode->m_cells[min_index].m_child;
+  
+  
   return std::visit([&](auto&& arg) ->Cursor 
     {
       using T = std::decay_t<decltype(arg)>;
@@ -162,9 +190,10 @@ Cursor internal_node_find(Table& table, nodePtr node, uint32_t key)
           return internal_node_find(table, child, key);
       else if constexpr (std::is_same_v<T, LeafNode<>*>)
           return leaf_node_find(table, child, key);
-    }, child);
+    }, child.ptr);
 }
 
+// TODO move out of header
 Cursor table_find(Table& table, uint32_t key) 
 {
   //throw CursorException("Need to implement searching an internal node");
@@ -172,9 +201,14 @@ Cursor table_find(Table& table, uint32_t key)
     {
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, InternalNode<>*>)
-            throw CursorException("Need to implement searching an internal node");
+        {
+          return internal_node_find(table, table.m_root, key);
+          //throw CursorException("Need to implement searching an internal node");
+        }
         else if constexpr (std::is_same_v<T, LeafNode<>*>)
-            return leaf_node_find(table, table.m_root.ptr, key);
+        {
+            return leaf_node_find(table, table.m_root, key);
+        }
     }, table.m_root.ptr);
 }
 
