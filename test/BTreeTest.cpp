@@ -91,3 +91,27 @@ TEST_F(BTreeTest, InsertSmallerKey)
     // check BTree internals for internal node with 
     EXPECT_EQ(val, ret);
 }
+
+TEST_F(BTreeTest, LargeDepth) 
+{
+    BTree<int,std::array<int,1000>> btree;
+    int i;
+    for(i = 1; i< InternalNode<int,std::array<int,1000>,0>::maxCells+3; ++i)
+    {
+        btree.emplace(i,{1,2,3});
+    }
+
+    auto& val = btree.at(i);
+    std::array<int,1000> ret={1,2,3};
+    // rootnode = internal node
+    // values are correct
+    // size is correct
+    EXPECT_EQ(val, ret);
+}
+
+TEST_F(BTreeTest, Key0) 
+{
+    BTree<int,int> btree;
+    auto val = btree.emplace(0,0);
+    EXPECT_EQ(val, 0);
+}

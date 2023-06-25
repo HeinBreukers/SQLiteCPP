@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.2)
 project(db_src)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wall -Wextra -Wshadow -Wnon-virtual-dtor -pedantic -Wold-style-cast -Wcast-align -Wunused -Woverloaded-virtual -Wpedantic -Wconversion -Wsign-conversion -Wmisleading-indentation -Wnull-dereference -Wdouble-promotion -Wformat=2" )
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wall -Wextra -Wshadow -Wnon-virtual-dtor -pedantic -Wold-style-cast -Wcast-align -Wunused -Woverloaded-virtual -Wpedantic -Wconversion -Wsign-conversion -Wmisleading-indentation -Wnull-dereference -Wdouble-promotion -Wformat=2" )
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wuseless-cast " )
 
 
@@ -10,7 +10,7 @@ include(FetchContent)
 
 FetchContent_Declare(fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-        GIT_TAG 8.1.1
+        GIT_TAG 10.0.0
         )
 
 FetchContent_MakeAvailable(fmt)

@@ -179,7 +179,7 @@ public:
         if(m_parent)
         {
             newLeaf->m_parent = m_parent;
-            this->updateParent(std::move(newLeaf));
+            this->updateParent(std::move(newLeaf),newLeaf->values[0].key);
         }
         else
         {

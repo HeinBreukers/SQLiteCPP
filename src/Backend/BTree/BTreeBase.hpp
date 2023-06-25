@@ -152,13 +152,18 @@ protected:
     //     }
     // }
 
-    void updateParent(PtrType rightChild)
+    void updateParent(PtrType rightChild, const KeyType& key)
     {
         if constexpr(std::is_same_v<NodeType,LeafNode<KeyType,ValueType>>)
         {
-            auto& rightChildFirstRow = rightChild->values[0];
-            rightChild->m_parent->emplace(rightChildFirstRow.key,std::move(rightChild));
+            //auto& rightChildFirstRow = rightChild->values[0];
+            //rightChild->m_parent->emplace(key,std::move(rightChild));
         }
+        else
+        {
+            auto& rightChildFirstRow = rightChild->values[0];
+        }
+        rightChild->m_parent->emplace(key,std::move(rightChild));
     }
 
     auto makeNewRoot(nodeVariant& root, PtrType rightChild)

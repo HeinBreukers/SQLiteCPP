@@ -95,6 +95,16 @@ int main(/*int argc, char* argv[]*/)
   btreeBig.print();
   // TODO at internal node
   //fmt::print("{}\n", btreeBig.at(3));
+
+
+  BTree<int,std::array<int,1000>> btreeD;
+  int i;
+  for(i = 1; i< InternalNode<int,std::array<int,1000>,0>::maxCells+100; ++i)
+  {
+      btreeD.emplace(i,{1,2,3});
+  }
+  btreeD.print();
+
   return 0;
 }
 
