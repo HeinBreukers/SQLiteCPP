@@ -20,14 +20,32 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/Backend/BTree)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/CLI)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/Core)
 
-set(SOURCE_FILES 
-main.cpp)
+set(SOURCE
+# Backend/Cursor.cpp
+Backend/BTree/Row.cpp
+Backend/BTree/RootNode.cpp
+# Backend/Table.cpp
+# Backend/Pager.cpp
+)
 
-set(HEADER_FILES 
+set(HEADER
 Core/CommandProcessor.hpp
 Core/VirtualMachine.hpp)
 
-add_executable(db ${SOURCE_FILES} ${HEADER_FILES})
+add_executable(db main.cpp ${SOURCE} ${HEADER})
 target_link_libraries(db fmt)
-#target_link_libraries(divider division)
-#install(TARGETS divider DESTINATION ${DIVISIBLE_INSTALL_BIN_DIR})
+
+add_library(SQLiteCPP
+STATIC
+      ${HEADER}
+      ${SOURCE}
+)
+
+target_link_libraries(SQLiteCPP PUBLIC fmt )
+target_compile_options(SQLiteCPP PRIVATE -Werror -Wall -Wextra -Wshadow -Wnon-virtual-dtor -pedantic -Wold-style-cast -Wcast-align -Wunused -Woverloaded-virtual -Wpedantic -Wconversion -Wsign-conversion -Wmisleading-indentation -Wnull-dereference -Wdouble-promotion -Wformat=2)
+# if GCC
+#target_compile_options(SQLiteCPP PRIVATE -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wuseless-cast)
+target_include_directories(SQLiteCPP PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Backend)
+target_include_directories(SQLiteCPP PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/Backend/BTree)
+target_include_directories(SQLiteCPP PUBLIC ${date_SOURCE_DIR}/CLI)
+target_include_directories(SQLiteCPP PUBLIC ${date_SOURCE_DIR}/Core)

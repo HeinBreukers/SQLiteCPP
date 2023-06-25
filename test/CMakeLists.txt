@@ -25,14 +25,24 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/Backend/BTree)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/CLI)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/Core)
 
+# add_executable(
+#   MainTest
+#   MainTest.cpp
+# )
+# target_link_libraries(
+#   MainTest
+#   GTest::gtest_main
+#   SQLiteCPP
+# )
+
 add_executable(
-  MainTest
-  MainTest.cpp
+  BTreeTest
+  BTreeTest.cpp
 )
 target_link_libraries(
-  MainTest
+  BTreeTest
   GTest::gtest_main
-  fmt
+  SQLiteCPP
 )
 
 #add_test(multiply_gtests test1)

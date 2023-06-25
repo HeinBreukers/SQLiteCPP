@@ -1,144 +1,62 @@
 #pragma once
-#include <cstddef>
-#include <inttypes.h>
-#include <array>
-#include <bit>
-#include <variant>
-#include <span>
 
-#include "Row.hpp"
+#include "BTreeForwardDeclares.hpp"
 #include "BTreeBase.hpp"
+#include "LeafNode.hpp"
+#include "InternalNode.hpp"
 
 
-#pragma pack(1)
-class LeafNodeHeader : public CommonNodeHeader
+#include <memory>
+#include <variant>
+#include <type_traits>
+
+#include <map>
+
+
+template<typename KeyType, typename ValueType>
+class BTree
 {
+private:
+    using nodeVariant = NodeVariant<KeyType,ValueType>;
+
 public:
-    uint32_t m_numCells;
-};
-#pragma pack()
-#pragma pack(1)
-class LeafNodeCell
-{
-public:
-    uint32_t m_key;
-    Row m_value;
-};
-#pragma pack()
 
-//TODO instead of pack(1) calculate alignment between header and array
-#pragma pack(1)
-template<size_t PageSize>
-class alignas(PageSize) LeafNode: public Page<LeafNode<PageSize>>
-{
-public:
-    static constexpr size_t pageSize = PageSize;
-    static constexpr size_t maxCells = (pageSize- sizeof(LeafNodeHeader))/sizeof(LeafNodeCell);
-    static constexpr size_t filler   = (pageSize- sizeof(LeafNodeHeader)) - sizeof(std::array<LeafNodeCell,maxCells>);
-public:
-    LeafNode():
-    m_header(LeafNodeHeader{{NodeType::Leaf, false, 0}, 0})
+    ValueType& emplace(const KeyType& key, const ValueType& value)
     {
-    }
-
-    LeafNode(bool isRoot, intType parent, uint32_t t_numCells):
-    m_header(LeafNodeHeader{{NodeType::Leaf, isRoot, parent}, t_numCells})
-    {
-    }
-
-    [[nodiscard]] uint32_t maxKey() 
-    {
-        return m_cells[m_header.m_numCells-1].m_key; 
-    }
-
-    // [[nodiscard]] static constexpr size_t maxCells() noexcept
-    // {
-    //     return maxCells;
-    // }
-
-    [[nodiscard]] static constexpr size_t rightSplitCount() noexcept
-    {
-        return (maxCells+1)/2;
-    }
-
-    [[nodiscard]] static constexpr size_t leftSplitCount() noexcept
-    {
-        return (maxCells+1) - rightSplitCount();
-    }
-
-    void print([[maybe_unused]] Pager* pager,uint32_t indentation_level = 0)
-    {
-        const uint32_t num_keys = m_header.m_numCells;
-        this->indent(indentation_level);
-        fmt::print("- leaf (size {})\n", num_keys);
-        for (uint32_t i = 0; i < num_keys; i++) 
+        auto& ret =  std::visit([&](auto&& t_ptr) ->ValueType&
         {
-            this->indent(indentation_level+1);
-            fmt::print("- {}\n", m_cells[i].m_key);
-        }
+            auto& leafnode = t_ptr->findLeaf(key);
+            return leafnode.emplace(key,value,m_root);
+        },m_root);
+        ++ m_size;
+        return ret;
     }
 
-    LeafNodeHeader m_header;
-    std::array<LeafNodeCell,maxCells> m_cells = {};
-private:
-    // empty filler for writing complete page to disk
-    [[no_unique_address]] typename std::conditional<(filler != 0) ,std::array<uint8_t,filler>, Empty>::type m_filler;
-};
-#pragma pack()
-
-static_assert(sizeof(LeafNode<>)==PAGE_SIZE);
-
-#pragma pack(1)
-class InternalNodeHeader : public CommonNodeHeader
-{
-public:
-    uint32_t m_numKeys;
-    intType m_rightChild;
-};
-#pragma pack()
-#pragma pack(1)
-class InternalNodeCell
-{
-public:
-    intType m_child;
-    uint32_t m_key;
-};
-#pragma pack()
-
-#pragma pack(1)
-template<size_t PageSize>
-class alignas(PageSize) InternalNode: public Page<InternalNode<PageSize>>
-{
-private:
-    static constexpr size_t pageSize = PageSize;
-    static constexpr size_t maxCells = (pageSize- sizeof(InternalNodeHeader))/sizeof(InternalNodeCell);
-    static constexpr size_t filler   = (pageSize- sizeof(InternalNodeHeader)) - sizeof(std::array<InternalNodeCell,maxCells>);
-public:
-    InternalNode():
-    m_header(InternalNodeHeader{{NodeType::Internal, false, 0}, 0, 0 })
+    ValueType& at(const KeyType& key)
     {
+        return std::visit([&](auto&& t_ptr) ->ValueType&
+        {
+            auto& leafnode = t_ptr->findLeaf(key);
+            return leafnode.at(key);
+        },m_root);
     }
 
-    InternalNode(bool isRoot, intType parent, uint32_t numKeys, intType rightChild):
-    m_header(InternalNodeHeader{{NodeType::Internal, isRoot, parent}, numKeys, rightChild})
+    std::size_t size()
     {
+        return m_size;
     }
 
-    uint32_t maxKey() 
+    void print() const
     {
-        return m_cells[m_header.m_numKeys-1].m_key; 
+        std::visit([](auto&& t_ptr)->void
+        {
+            t_ptr->print();
+        },m_root);
     }
-
-    void print(Pager* pager, uint32_t indentation_level = 0);
-
-
-    InternalNodeHeader m_header;
-    std::array<InternalNodeCell,maxCells> m_cells;
 private:
-    // empty filler for writing complete page to disk
-    [[no_unique_address]] typename std::conditional<(filler != 0),std::array<uint8_t,filler>, Empty>::type m_filler;
+    nodeVariant m_root = std::make_unique<LeafNode<KeyType, ValueType>>();
+    std::size_t m_size = 0;
+private:
+    static_assert(sizeof(LeafNode<KeyType, ValueType>)==PAGE_SIZE);
+    static_assert(sizeof(InternalNode<KeyType,ValueType,0>)==PAGE_SIZE);
 };
-#pragma pack()
-
-static_assert(sizeof(InternalNode<>)==PAGE_SIZE);
-
