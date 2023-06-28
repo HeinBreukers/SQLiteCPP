@@ -21,9 +21,10 @@ public:
     using ParentType = InternalNode<KeyType,ValueType,0,PageSize>;
     using PtrType = std::unique_ptr<type>;
     using ParentPtrType = std::shared_ptr<ParentType>;
-    static constexpr size_t pageSize = PageSize;
-    
+    using indexType = uint32_t;
 
+    static constexpr size_t pageSize = PageSize;
+    static constexpr size_t maxValues = type::maxValues;
 };
 
 //TODO instead of pack(1) calculate alignment between header and array
@@ -32,18 +33,19 @@ template<typename KeyType, typename ValueType, size_t PageSize>
 class alignas(PageSize) LeafNode: public BTreeBase<LeafNode<KeyType, ValueType, PageSize>>
 {
 public:
-    // using KeyType = uint32_t;
-    // using ValueType = int; 
+
     using RowType = Row<KeyType,ValueType>; 
-    using ParentType = InternalNode<KeyType,ValueType,0>;
+    using ParentType = InternalNode<KeyType,ValueType,0,PageSize>;
     using ParentPtrType = std::shared_ptr<ParentType>;
     using indexType = uint32_t;
     using Base = BTreeBase<LeafNode<KeyType, ValueType, PageSize>>;
+    using LeafType = LeafNode<KeyType,ValueType,PageSize>;
 
 
     static constexpr size_t pageSize = PageSize;
-    static constexpr size_t maxCells = (pageSize- sizeof(indexType)- sizeof(ParentPtrType))/sizeof(RowType);
-    static constexpr size_t filler   = pageSize- sizeof(indexType)- sizeof(ParentPtrType) - sizeof(std::array<RowType,maxCells>);
+    static_assert(pageSize>(sizeof(indexType)+ sizeof(ParentPtrType)), "PageSize too small");
+    static constexpr size_t maxValues = (pageSize- sizeof(indexType)- sizeof(ParentPtrType))/sizeof(RowType);
+    static constexpr size_t filler   = pageSize- sizeof(indexType)- sizeof(ParentPtrType) - sizeof(std::array<RowType,maxValues>);
 public:
     LeafNode()=default;
 
@@ -67,7 +69,7 @@ public:
         return row.value;
     }
 
-    LeafNode<KeyType,ValueType>& findLeaf([[maybe_unused]] const KeyType& key)
+    LeafType& findLeaf([[maybe_unused]] const KeyType& key)
     {
         return *this;
     }
@@ -75,56 +77,32 @@ public:
     ValueType& emplace(const KeyType& key, const ValueType& value, typename Base::nodeVariant& root)
     {
         const indexType num_cells = m_size;
-        // findIndex cell
-        // TODO 
+
         auto cellnum = this->findIndex(key);
+        if (num_cells >= maxValues) {
+            // Node full
+            return leaf_node_split_and_insert(key, value,cellnum,root);
+        }
+
         auto& row = values[cellnum];
-        if(row.key==key)
+        if(row.key==key && cellnum<m_size)
         {
             throw(std::out_of_range("Duplicate Key"));
         }
         
-
-        if (num_cells >= maxCells) {
-            // Node full
-            return leaf_node_split_and_insert(key, value,cellnum,root);
+        if (cellnum < num_cells) {
+        // Make room for new cell
+        for (uint32_t i = num_cells; i > cellnum; i--) {
+            values[i] = values[i-1];
         }
-        else
-        {
-            
-            if (cellnum < num_cells) {
-            // Make room for new cell
-            for (uint32_t i = num_cells; i > cellnum; i--) {
-                values[i] = values[i-1];
-            }
-            }
-            m_size +=1;
-            row = values[cellnum];
-            row.key = key;
-            row.value = value;
-            return row.value;
         }
+        m_size +=1;
+        row = values[cellnum];
+        row.key = key;
+        row.value = value;
+        return row.value;
+        
     }
-
-    // [[nodiscard]] uint32_t findIndex(uint32_t key) 
-    // {
-    //     // Binary search
-    //     uint32_t min_index = 0;
-    //     uint32_t one_past_max_index = m_size;
-    //     while (one_past_max_index != min_index) {
-    //         const uint32_t index = (min_index + one_past_max_index) / 2;
-    //         const uint32_t key_at_index = values[index].key;
-    //         if (key == key_at_index) {
-    //         return index;
-    //         }
-    //         if (key < key_at_index) {
-    //         one_past_max_index = index;
-    //         } else {
-    //         min_index = index + 1;
-    //         }
-    //     }
-    //     return min_index;
-    // }
 
     ValueType& leaf_node_split_and_insert(const KeyType& key, const ValueType& value,indexType cellnum, typename Base::nodeVariant& root) 
     {
@@ -133,17 +111,17 @@ public:
         Insert the new value in one of the two nodes.
         Update parent or create a new parent.
         */
-        auto newLeaf = std::make_unique<LeafNode<KeyType,ValueType>>();
+        auto newLeaf = std::make_unique<LeafType>();
         /*
         All existing keys plus new key should be divided
         evenly between old (left) and new (right) nodes.
         Starting from the right, move each key to correct position.
         */
         ValueType* ret;
-        for (int32_t i = LeafNode<KeyType,ValueType>::maxCells; i >= 0; i--) {
-            LeafNode<KeyType,ValueType>* destination_node = [&]()
+        for (int32_t i = maxValues; i >= 0; i--) {
+            LeafType* destination_node = [&]()
             {
-            if (static_cast<indexType>(i) >= LeafNode<KeyType,ValueType>::leftSplitCount()) 
+            if (static_cast<indexType>(i) >= Base::leftSplitCount()) 
             {
                 return newLeaf.get();
             } 
@@ -153,7 +131,7 @@ public:
             }
             }();
             
-            indexType index_within_node = static_cast<indexType>(i) % LeafNode<KeyType,ValueType>::leftSplitCount();
+            indexType index_within_node = static_cast<indexType>(i) % Base::leftSplitCount();
             RowType& destination = destination_node->values[index_within_node];
 
             if (static_cast<indexType>(i) == cellnum) 
@@ -172,14 +150,13 @@ public:
             }
         }
         /* Update cell count on both leaf nodes */
-        m_size = LeafNode<KeyType,ValueType>::leftSplitCount();
-        newLeaf->m_size = LeafNode<KeyType,ValueType>::rightSplitCount();
+        m_size = Base::leftSplitCount();
+        newLeaf->m_size = Base::rightSplitCount();
         
-        // TODO
         if(m_parent)
         {
             newLeaf->m_parent = m_parent;
-            this->updateParent(std::move(newLeaf),newLeaf->values[0].key);
+            this->updateParent(newLeaf->values[0].key,std::move(newLeaf),root);
         }
         else
         {
@@ -189,15 +166,7 @@ public:
         return *ret;
     }
 
-    [[nodiscard]] static constexpr indexType rightSplitCount() noexcept
-    {
-        return (maxCells+1)/2;
-    }
-
-    [[nodiscard]] static constexpr indexType leftSplitCount() noexcept
-    {
-        return (maxCells+1) - rightSplitCount();
-    }
+    
 
     void print(uint32_t indentation_level = 0) const
     {
@@ -212,12 +181,10 @@ public:
     }
 
     indexType m_size = 0;
-    //std::array<uint32_t,maxCells> keys = {};
     ParentPtrType m_parent = nullptr;
-    std::array<RowType,maxCells> values = {};
+    std::array<RowType,maxValues> values = {};
 private:
 
-    //split
     // empty filler for writing complete page to disk
     [[no_unique_address]] typename std::conditional<(filler != 0) ,std::array<uint8_t,filler>, Empty>::type m_filler;
 };

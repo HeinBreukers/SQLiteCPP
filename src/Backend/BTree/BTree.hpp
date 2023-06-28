@@ -13,11 +13,11 @@
 #include <map>
 
 
-template<typename KeyType, typename ValueType>
+template<typename KeyType, typename ValueType, size_t PageSize = PAGE_SIZE>
 class BTree
 {
 private:
-    using nodeVariant = NodeVariant<KeyType,ValueType>;
+    using nodeVariant = NodeVariant<KeyType,ValueType,PageSize>;
 
 public:
 
@@ -53,10 +53,11 @@ public:
             t_ptr->print();
         },m_root);
     }
-private:
-    nodeVariant m_root = std::make_unique<LeafNode<KeyType, ValueType>>();
+
+    nodeVariant m_root = std::make_unique<LeafNode<KeyType, ValueType,PageSize>>();
     std::size_t m_size = 0;
 private:
     static_assert(sizeof(LeafNode<KeyType, ValueType>)==PAGE_SIZE);
     static_assert(sizeof(InternalNode<KeyType,ValueType,0>)==PAGE_SIZE);
+    static_assert(sizeof(InternalNode<KeyType,ValueType,1>)==PAGE_SIZE);
 };

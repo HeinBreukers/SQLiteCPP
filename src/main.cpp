@@ -70,25 +70,16 @@ int main(/*int argc, char* argv[]*/)
   //val = 5;
   btree.print();
 
-  BTree<uint32_t,std::array<int,500>> btreeBig;
-  btreeBig.emplace(2,{1,2,3});
-  btreeBig.print();
-  btreeBig.emplace(3,{1,2,3});
-  btreeBig.print();
-  // TODO update parent
-  
-  btreeBig.emplace(5,{1,2,3});
-  btreeBig.print();
-  btreeBig.emplace(6,{1,2,3});
-  btreeBig.print();
-  btreeBig.emplace(7,{1,2,3});
-  btreeBig.print();
+  BTree<uint32_t,std::array<int,250>> btreeBig;
   btreeBig.emplace(8,{1,2,3});
-  btreeBig.print();
+  btreeBig.emplace(7,{1,2,3});
+  btreeBig.emplace(6,{1,2,3});
+  btreeBig.emplace(2,{1,2,3});
+  btreeBig.emplace(3,{1,2,3});
+  btreeBig.emplace(5,{1,2,3});
   btreeBig.emplace(1,{1,2,3});
-  btreeBig.print();
-  // btreeBig.emplace(4,{1,2,3});
-  // btreeBig.print();
+  btreeBig.emplace(4,{1,2,3});
+
 
   //std::array<int,500> ret={1,2,3};
   
@@ -99,11 +90,26 @@ int main(/*int argc, char* argv[]*/)
 
   BTree<int,std::array<int,1000>> btreeD;
   int i;
-  for(i = 1; i< InternalNode<int,std::array<int,1000>,0>::maxCells+100; ++i)
+  for(i = InternalNode<int,std::array<int,1000>,0>::maxValues+100; i> 0; --i)
   {
       btreeD.emplace(i,{1,2,3});
   }
-  btreeD.print();
+  // for(i = 1; i< InternalNode<int,std::array<int,1000>,0>::maxValues+100; ++i)
+  // {
+  //     btreeD.emplace(i,{1,2,3});
+  // }
+  //btreeD.print();
+
+
+  const size_t pagesize = 128;
+  BTree<int,long long, pagesize> btreePage;
+
+  for(i = 1; i<256; ++i)
+  {
+      btreePage.emplace(i,1);
+  }
+
+  btreePage.print();
 
   return 0;
 }

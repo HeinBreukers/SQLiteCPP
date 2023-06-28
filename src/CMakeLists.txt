@@ -23,7 +23,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/Core)
 set(SOURCE
 # Backend/Cursor.cpp
 Backend/BTree/Row.cpp
-Backend/BTree/RootNode.cpp
+# Backend/BTree/RootNode.cpp
 # Backend/Table.cpp
 # Backend/Pager.cpp
 )
