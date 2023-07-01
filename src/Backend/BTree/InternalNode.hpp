@@ -14,18 +14,31 @@
 
 
 
-template<typename KeyType, typename ValueType,size_t Depth,size_t PageSize>
-class traits<InternalNode<KeyType,ValueType,Depth,PageSize>>
+template<typename KeyType, typename ValueType, size_t Depth,size_t PageSize, typename Allocator>
+class traits<InternalNode<KeyType,ValueType,Depth,PageSize,Allocator>>
 {
 public:
+    using indexType = uint32_t;
+
     using keyType = KeyType;
     using valueType = ValueType;
-    using type = InternalNode<KeyType,ValueType,Depth,PageSize>;
-    using ParentType = InternalNode<KeyType,ValueType,Depth+1,PageSize>;
-    using ParentPtrType = std::shared_ptr<InternalNode<KeyType,ValueType,Depth+1>>;
-    using PtrType = std::shared_ptr<type>;
+    using allocator = Allocator;
 
-    using indexType = uint32_t;
+    using type = InternalNode<KeyType,ValueType,Depth,PageSize,Allocator>;
+    using ParentType = InternalNode<KeyType,ValueType,Depth+1,PageSize,Allocator>;
+    
+
+    using NodeAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<type>;
+    using NodeAllocatorTraits = typename std::allocator_traits<Allocator>::template rebind_traits<type>;
+
+    using PtrType = typename NodeAllocatorTraits::pointer;
+
+    using ParentAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<InternalNode<KeyType,ValueType,Depth+1,PageSize,Allocator>>;
+    using ParentAllocatorTraits = typename std::allocator_traits<Allocator>::template rebind_traits<InternalNode<KeyType,ValueType,Depth+1,PageSize,Allocator>>;
+
+    using ParentPtrType = typename ParentAllocatorTraits::pointer;
+
+    
     static constexpr size_t depth = Depth;
     static constexpr size_t pageSize = PageSize;
     static constexpr size_t maxValues = type::maxValues;
@@ -33,21 +46,33 @@ public:
 
 
 #pragma pack(1)
-template<typename KeyType, typename ValueType, size_t Depth, size_t PageSize>
-class alignas(PageSize) InternalNode: public BTreeBase<InternalNode<KeyType,ValueType,Depth,PageSize>>, public std::true_type
+template<typename KeyType, typename ValueType, size_t Depth, size_t PageSize, typename Allocator>
+class alignas(PageSize) InternalNode: public BTreeBase<InternalNode<KeyType,ValueType,Depth,PageSize,Allocator>>, public std::true_type
 {
 public:
     using indexType = uint32_t;
-    using LeafType = LeafNode<KeyType,ValueType,PageSize>;
-    using InternalType = InternalNode<KeyType,ValueType,Depth,PageSize>;
 
-    using ChildType = std::conditional_t<(Depth<1),LeafType,InternalNode<KeyType,ValueType,Depth-1,PageSize>>;
-    using ChildPtrType = std::conditional_t<(Depth<1),std::unique_ptr<ChildType>,std::shared_ptr<ChildType>>;
-    //using ParentType = ;
-    using ParentPtrType = std::shared_ptr<InternalNode<KeyType,ValueType,Depth+1,PageSize>>;
+    using type = InternalNode<KeyType,ValueType,Depth,PageSize,Allocator>;
+    using LeafType = LeafNode<KeyType,ValueType,PageSize,Allocator>;
+    using ChildType = std::conditional_t<(Depth<1),LeafType,InternalNode<KeyType,ValueType,Depth-1,PageSize,Allocator>>;
+
+    using NodeAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<type>;
+    using NodeAllocatorTraits = typename std::allocator_traits<Allocator>::template rebind_traits<type>;
+
+    using PtrType = typename NodeAllocatorTraits::pointer;
+
+    using ParentAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<InternalNode<KeyType,ValueType,Depth+1,PageSize,Allocator>>;
+    using ParentAllocatorTraits = typename std::allocator_traits<Allocator>::template rebind_traits<InternalNode<KeyType,ValueType,Depth+1,PageSize,Allocator>>;
+
+    using ParentPtrType = typename ParentAllocatorTraits::pointer;
+
+    using ChildAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<ChildType>;
+    using ChildAllocatorTraits = typename std::allocator_traits<Allocator>::template rebind_traits<ChildType>;
+
+    using ChildPtrType = typename ChildAllocatorTraits::pointer;
     
 
-    using Base = BTreeBase<InternalNode<KeyType,ValueType,Depth,PageSize>>;
+    using Base = BTreeBase<InternalNode<KeyType,ValueType,Depth,PageSize,Allocator>>;
 
     struct ChildNode
     {
@@ -63,12 +88,22 @@ public:
 
 public:
     InternalNode() = default;
+    InternalNode(const InternalNode&) = delete;
+    InternalNode(InternalNode&&)=delete;
+    InternalNode& operator=(const InternalNode&) = delete;
+    InternalNode& operator=(InternalNode&&) = delete;
+    ~InternalNode()
+    {
+        for(indexType i=0; i< m_size; ++i)
+        {
+            auto& childPtr = values[i];
+            auto allocator = std::move(childPtr->get_allocator());
+            ChildAllocatorTraits::destroy(allocator,childPtr);
+            ChildAllocatorTraits::deallocate(allocator,childPtr,1);
+            
+        }
+    }
 
-
-    // KeyType maxKey() 
-    // {
-    //     return values[m_size-1].key; 
-    // }
 
     ChildType& emplace(const KeyType& key, ChildPtrType&& child,typename Base::nodeVariant& root)
     {
@@ -101,7 +136,7 @@ public:
       m_size +=1;
       keys[keyIndex] = key;
       values[valueIndex] = std::move(child);
-      return *(values[valueIndex].get());
+      return *(values[valueIndex]);
       
     }
 
@@ -113,7 +148,10 @@ public:
         Insert the new value in one of the two nodes.
         Update parent or create a new parent.
         */
-        auto newInternalNode = std::make_shared<InternalType>();
+        //auto newInternalNode = std::make_shared<InternalType>();
+        // this->m_nodeAllocator.allocate(1);
+        auto newInternalNode = NodeAllocatorTraits::allocate(this->get_allocator(),1);
+        NodeAllocatorTraits::construct(this->m_nodeAllocator,newInternalNode);
         /*
         All existing keys plus new key should be divided
         evenly between old (left) and new (right) nodes.
@@ -122,11 +160,11 @@ public:
         ChildType* ret;
         // TODO split loop in two for keys and values for better data locality?
         for (int32_t i = maxValues; i >= 0; i--) {
-            InternalType* destination_node = [&]()
+            PtrType destination_node = [&]()
             {
             if (static_cast<indexType>(i) >= Base::leftSplitCount()) 
             {
-                return newInternalNode.get();
+                return newInternalNode;
             } 
             else 
             {
@@ -143,7 +181,7 @@ public:
             {
                 destinationValue = std::move(value);
                 destination_node->keys[index_within_node-1] = std::move(key);
-                ret=destinationValue.get();
+                ret=destinationValue;
             } 
             else if (static_cast<indexType>(i) > cellnum) 
             {
@@ -189,7 +227,7 @@ public:
       
       if constexpr(std::is_same_v<LeafType, ChildType>)
       {
-        return *(values[static_cast<indexType>(index)].get());
+        return *(values[static_cast<indexType>(index)]);
       }
       return values[static_cast<indexType>(index)]->findLeaf(key);
     } 
@@ -202,6 +240,11 @@ public:
       for (indexType i = 0; i < m_size; i++) 
       {
         values[i]->print(indentation_level+1);
+        if(i<(m_size-1))
+        {
+            this->indent(indentation_level);
+            fmt::print("- Key ({})\n", keys[i]);
+        }
       }
     }
 

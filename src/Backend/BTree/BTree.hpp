@@ -13,13 +13,27 @@
 #include <map>
 
 
-template<typename KeyType, typename ValueType, size_t PageSize = PAGE_SIZE>
+template<typename KeyType, typename ValueType, size_t PageSize = PAGE_SIZE, typename Allocator = std::allocator<ValueType>>
 class BTree
 {
 private:
-    using nodeVariant = NodeVariant<KeyType,ValueType,PageSize>;
-
+    using nodeVariant = NodeVariant<KeyType,ValueType,PageSize,Allocator>;
+    
 public:
+    // TODO conform to allocatorAwareContainer constraints
+    // https://en.cppreference.com/w/cpp/named_req/AllocatorAwareContainer
+    // TODO implement destroy
+    // for now delete copy and move constructors
+    // TODO replace by allocator traits construct
+    BTree():
+    m_root( new LeafNode<KeyType, ValueType,PageSize,Allocator>())
+    {}
+
+    BTree(const BTree&) = delete;
+    BTree(BTree&&)=delete;
+    BTree& operator=(const BTree&) = delete;
+    BTree& operator=(BTree&&) = delete;
+    ~BTree() = default;
 
     ValueType& emplace(const KeyType& key, const ValueType& value)
     {
@@ -54,10 +68,11 @@ public:
         },m_root);
     }
 
-    nodeVariant m_root = std::make_unique<LeafNode<KeyType, ValueType,PageSize>>();
+    nodeVariant m_root;
     std::size_t m_size = 0;
 private:
-    static_assert(sizeof(LeafNode<KeyType, ValueType>)==PAGE_SIZE);
-    static_assert(sizeof(InternalNode<KeyType,ValueType,0>)==PAGE_SIZE);
-    static_assert(sizeof(InternalNode<KeyType,ValueType,1>)==PAGE_SIZE);
+    // TODO fix for different page sizes
+    static_assert(sizeof(LeafNode<KeyType, ValueType,PageSize,Allocator>)==PageSize);
+    static_assert(sizeof(InternalNode<KeyType,ValueType,0,PageSize,Allocator>)==PageSize);
+    static_assert(sizeof(InternalNode<KeyType,ValueType,1,PageSize,Allocator>)==PageSize);
 };

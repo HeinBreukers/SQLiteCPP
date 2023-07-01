@@ -11,17 +11,28 @@
 #include "Row.hpp"
 #include "BTreeBase.hpp"
 
-template<typename KeyType, typename ValueType,size_t PageSize>
-class traits<LeafNode<KeyType, ValueType, PageSize>>
+template<typename KeyType, typename ValueType,size_t PageSize,typename Allocator>
+class traits<LeafNode<KeyType, ValueType, PageSize,Allocator>>
 {
 public:
+    using indexType = uint32_t;
+
     using keyType = KeyType;
     using valueType = ValueType;
-    using type = LeafNode<KeyType, ValueType, PageSize>;
-    using ParentType = InternalNode<KeyType,ValueType,0,PageSize>;
-    using PtrType = std::unique_ptr<type>;
-    using ParentPtrType = std::shared_ptr<ParentType>;
-    using indexType = uint32_t;
+    using allocator = Allocator;
+
+    using type = LeafNode<KeyType, ValueType, PageSize,Allocator>;
+    using ParentType = InternalNode<KeyType,ValueType,0,PageSize,Allocator>;
+
+
+    using NodeAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<type>;
+    using NodeAllocatorTraits = typename std::allocator_traits<Allocator>::template rebind_traits<type>;
+
+    using ParentAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<ParentType>;
+    using ParentAllocatorTraits = typename std::allocator_traits<Allocator>::template rebind_traits<ParentType>;
+
+    using PtrType = typename NodeAllocatorTraits::pointer;
+    using ParentPtrType = typename ParentAllocatorTraits::pointer;
 
     static constexpr size_t pageSize = PageSize;
     static constexpr size_t maxValues = type::maxValues;
@@ -29,17 +40,30 @@ public:
 
 //TODO instead of pack(1) calculate alignment between header and array
 #pragma pack(1)
-template<typename KeyType, typename ValueType, size_t PageSize>
-class alignas(PageSize) LeafNode: public BTreeBase<LeafNode<KeyType, ValueType, PageSize>>
+template<typename KeyType, typename ValueType, size_t PageSize,typename Allocator>
+class alignas(PageSize) LeafNode: public BTreeBase<LeafNode<KeyType, ValueType,PageSize, Allocator>>
 {
 public:
+    
 
-    using RowType = Row<KeyType,ValueType>; 
-    using ParentType = InternalNode<KeyType,ValueType,0,PageSize>;
-    using ParentPtrType = std::shared_ptr<ParentType>;
     using indexType = uint32_t;
-    using Base = BTreeBase<LeafNode<KeyType, ValueType, PageSize>>;
-    using LeafType = LeafNode<KeyType,ValueType,PageSize>;
+    using RowType = Row<KeyType,ValueType>; 
+
+    using type = LeafNode<KeyType, ValueType,PageSize, Allocator>;
+    using Base = BTreeBase<LeafNode<KeyType, ValueType, PageSize,Allocator>>;
+    using LeafType = LeafNode<KeyType,ValueType,PageSize,Allocator>;
+    using ParentType = InternalNode<KeyType,ValueType,0,PageSize,Allocator>;
+    
+
+    using NodeAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<type>;
+    using NodeAllocatorTraits = typename std::allocator_traits<Allocator>::template rebind_traits<type>;
+
+    using PtrType = typename NodeAllocatorTraits::pointer;
+
+    using ParentAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<ParentType>;
+    using ParentAllocatorTraits = typename std::allocator_traits<Allocator>::template rebind_traits<ParentType>;
+
+    using ParentPtrType = typename ParentAllocatorTraits::pointer;
 
 
     static constexpr size_t pageSize = PageSize;
@@ -48,6 +72,11 @@ public:
     static constexpr size_t filler   = pageSize- sizeof(indexType)- sizeof(ParentPtrType) - sizeof(std::array<RowType,maxValues>);
 public:
     LeafNode()=default;
+    LeafNode(const LeafNode&) = delete;
+    LeafNode(LeafNode&&)=delete;
+    LeafNode& operator=(const LeafNode&) = delete;
+    LeafNode& operator=(LeafNode&&) = delete;
+    ~LeafNode() = default;
 
     [[nodiscard]] indexType maxKey() 
     {
@@ -111,7 +140,12 @@ public:
         Insert the new value in one of the two nodes.
         Update parent or create a new parent.
         */
-        auto newLeaf = std::make_unique<LeafType>();
+
+        //auto newLeaf = this->m_nodeAllocator.allocate(1);
+        auto newLeaf = NodeAllocatorTraits::allocate(this->get_allocator(),1);
+        NodeAllocatorTraits::construct(this->m_nodeAllocator,newLeaf);
+        //NodeAllocator::construct();
+        //auto newLeaf = std::make_unique<LeafType>();
         /*
         All existing keys plus new key should be divided
         evenly between old (left) and new (right) nodes.
@@ -119,11 +153,11 @@ public:
         */
         ValueType* ret;
         for (int32_t i = maxValues; i >= 0; i--) {
-            LeafType* destination_node = [&]()
+            PtrType destination_node = [&]()
             {
             if (static_cast<indexType>(i) >= Base::leftSplitCount()) 
             {
-                return newLeaf.get();
+                return newLeaf;
             } 
             else 
             {
@@ -175,8 +209,8 @@ public:
         fmt::print("- leaf (size {})\n", num_keys);
         for (indexType i = 0; i < num_keys; i++) 
         {
-            this->indent(indentation_level+1);
-            fmt::print("- {}, \n", values[i].key);
+            //this->indent(indentation_level+1);
+            //fmt::print("- {}, \n", values[i].key);
         }
     }
 
@@ -184,7 +218,6 @@ public:
     ParentPtrType m_parent = nullptr;
     std::array<RowType,maxValues> values = {};
 private:
-
     // empty filler for writing complete page to disk
     [[no_unique_address]] typename std::conditional<(filler != 0) ,std::array<uint8_t,filler>, Empty>::type m_filler;
 };

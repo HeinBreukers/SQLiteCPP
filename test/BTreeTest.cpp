@@ -74,7 +74,7 @@ TEST_F(BTreeTest, SplitLeafNewRoot)
     btree.emplace(2,{1,2,3});
     auto& val = btree.emplace(4,{1,2,3});
     std::array<int,1000> ret={1,2,3};
-    auto& rootnode = std::get<std::shared_ptr<InternalNode<uint32_t,std::array<int,1000>,0>>>(btree.m_root);
+    auto& rootnode = std::get<InternalNode<uint32_t,std::array<int,1000>,0>*>(btree.m_root);
 
     EXPECT_EQ(val, ret);
     EXPECT_EQ(btree.size(), 2);
@@ -89,7 +89,7 @@ TEST_F(BTreeTest, SplitLeafUpdateParent)
     btree.emplace(4,{1,2,3});
     auto& val = btree.emplace(5,{1,2,3});
     std::array<int,500> ret={1,2,3};
-    auto& rootnode = std::get<std::shared_ptr<InternalNode<uint32_t,std::array<int,500>,0>>>(btree.m_root);
+    auto& rootnode = std::get<InternalNode<uint32_t,std::array<int,500>,0>*>(btree.m_root);
 
     EXPECT_EQ(val, ret);
     EXPECT_EQ(btree.size(), 3);
@@ -106,7 +106,7 @@ TEST_F(BTreeTest, InsertSmallerKey)
     auto& val = btree.emplace(1,{1,2,3});
     std::array<int,500> ret={1,2,3};
     // check BTree internals for internal node with 
-    auto& rootnode = std::get<std::shared_ptr<InternalNode<uint32_t,std::array<int,500>,0>>>(btree.m_root);
+    auto& rootnode = std::get<InternalNode<uint32_t,std::array<int,500>,0>*>(btree.m_root);
 
     EXPECT_EQ(val, ret);
     EXPECT_EQ(btree.size(), 3);
@@ -125,7 +125,7 @@ TEST_F(BTreeTest, SplitInternalNewRoot)
     auto& val = btree.at(i-1);
     std::array<int,1000> ret={1,2,3};
 
-    auto& rootnode = std::get<std::shared_ptr<InternalNode<int,std::array<int,1000>,1>>>(btree.m_root);
+    auto& rootnode = std::get<InternalNode<int,std::array<int,1000>,1>*>(btree.m_root);
 
     EXPECT_EQ(val, ret);
     EXPECT_EQ(btree.size(), (InternalNode<int,std::array<int,1000>,0>::maxValues+99));
@@ -145,7 +145,7 @@ TEST_F(BTreeTest, SplitInternalNewRootDecreasing)
     auto& val = btree.at(InternalNode<int,std::array<int,1000>,0>::maxValues);
     std::array<int,1000> ret={1,2,3};
 
-    auto& rootnode = std::get<std::shared_ptr<InternalNode<int,std::array<int,1000>,1>>>(btree.m_root);
+    auto& rootnode = std::get<InternalNode<int,std::array<int,1000>,1>*>(btree.m_root);
 
     EXPECT_EQ(val, ret);
     EXPECT_EQ(btree.size(), (InternalNode<int,std::array<int,1000>,0>::maxValues+overshoot));
@@ -157,36 +157,19 @@ TEST_F(BTreeTest, SplitInternalUpdateParent)
 {
     const size_t pagesize = 128;
     BTree<int,long long, pagesize> btree;
-    for(int i = 0; i<256; ++i)
+    for(int i = 0; i<512; ++i)
     {
         btree.emplace(i,i);
     }
     auto& val = btree.at(128);
 
-    auto& rootnode = std::get<std::shared_ptr<InternalNode<int,long long,2, pagesize>>>(btree.m_root);
+    auto& rootnode = std::get<InternalNode<int,long long,2, pagesize>*>(btree.m_root);
 
     EXPECT_EQ(val, 128);
-    EXPECT_EQ(btree.size(), 256);
-    EXPECT_EQ(rootnode->m_size, 4);
-    EXPECT_EQ(rootnode->keys[0], 60);
+    EXPECT_EQ(btree.size(), 512);
+    EXPECT_EQ(rootnode->m_size, 5);
+    EXPECT_EQ(rootnode->keys[0], 100);
 }
-
-// TEST_F(BTreeTest, NewInternalRoot) 
-// {
-//     BTree<int,std::array<int,1000>> btree;
-//     int i;
-//     for(i = 1; i< InternalNode<int,std::array<int,1000>,0>::maxValues+100; ++i)
-//     {
-//         btree.emplace(i,{1,2,3});
-//     }
-
-//     auto& val = btree.at(i-1);
-//     std::array<int,1000> ret={1,2,3};
-//     // rootnode = internal node
-//     // values are correct
-//     // size is correct
-//     EXPECT_EQ(val, ret);
-// }
 
 // Test if default constructed value of key dus not give duplicate key error
 TEST_F(BTreeTest, DefaultKey) 

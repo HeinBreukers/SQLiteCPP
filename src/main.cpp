@@ -5,6 +5,8 @@
 #include "BTree.hpp"
 
 #include <iostream>
+#include <vector>
+#include <map>
 
 void print_prompt() 
 { 
@@ -87,13 +89,14 @@ int main(/*int argc, char* argv[]*/)
   // TODO at internal node
   //fmt::print("{}\n", btreeBig.at(3));
 
-
+{
   BTree<int,std::array<int,1000>> btreeD;
   int i;
-  for(i = InternalNode<int,std::array<int,1000>,0>::maxValues+100; i> 0; --i)
+  for(i = InternalNode<int,std::array<int,1000>,0,4096>::maxValues+100; i> 0; --i)
   {
       btreeD.emplace(i,{1,2,3});
   }
+}
   // for(i = 1; i< InternalNode<int,std::array<int,1000>,0>::maxValues+100; ++i)
   // {
   //     btreeD.emplace(i,{1,2,3});
@@ -104,7 +107,7 @@ int main(/*int argc, char* argv[]*/)
   const size_t pagesize = 128;
   BTree<int,long long, pagesize> btreePage;
 
-  for(i = 1; i<256; ++i)
+  for(int i = 1; i<256; ++i)
   {
       btreePage.emplace(i,1);
   }

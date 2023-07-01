@@ -7,8 +7,8 @@
 #include <cstring>
 #include <fmt/format.h>
 
-#include "../Backend/Pager.hpp"
-#include "../Backend/Cursor.hpp"
+#include "Pager.hpp"
+#include "Cursor.hpp"
 
 
 enum class StatementType

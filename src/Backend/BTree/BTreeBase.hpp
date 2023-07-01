@@ -31,12 +31,6 @@ public:
   virtual ~BTreeException() noexcept = default;
 };
 
-// enum class NodeType: uint8_t
-// {
-//     Internal,
-//     Leaf
-// };
-
 // CRTP base class Page
 template<typename Node>
 class BTreeBase
@@ -48,27 +42,33 @@ protected:
     using ParentType = typename traits<Node>::ParentType;
     using PtrType = typename traits<Node>::PtrType;
     using indexType = typename traits<Node>::indexType;
-    
+    using Allocator = typename traits<Node>::allocator;
+
+    using NodeAllocator = typename traits<Node>::NodeAllocator;
+    using NodeAllocatorTraits = typename traits<Node>::NodeAllocatorTraits;
+
+    using ParentAllocator = typename traits<Node>::ParentAllocator;
+    using ParentAllocatorTraits = typename traits<Node>::ParentAllocatorTraits;
+
+  
+    using ParentPtrType = typename traits<Node>::ParentPtrType;
 
     static constexpr size_t pageSize = traits<Node>::pageSize;
     static constexpr size_t maxValues = traits<Node>::maxValues;
 
-    using LeafType = LeafNode<KeyType,ValueType,pageSize>;
+    using LeafType = LeafNode<KeyType,ValueType,pageSize,Allocator>;
 
 
-    using nodeVariant = NodeVariant<KeyType,ValueType,pageSize>;
+    using nodeVariant = NodeVariant<KeyType,ValueType,pageSize,Allocator>;
 
     Node* derived()
     {
         return static_cast<Node*>(this);
     }
-public:
-    
 
-    uint32_t maxKey()
-    {
-        return static_cast<Node*>(this)->maxKey();
-    }
+    [[no_unique_address]] NodeAllocator m_nodeAllocator;
+    [[no_unique_address]] ParentAllocator m_parentAllocator;
+public:
 
     static void indent(uint32_t level) 
     {
@@ -97,6 +97,10 @@ protected:
         return (maxValues+1) - rightSplitCount();
     }
 
+    [[nodiscard]] NodeAllocator& get_allocator() noexcept
+    {
+        return m_nodeAllocator;
+    }
 
     [[nodiscard]] uint32_t findIndex(KeyType key) 
     {
@@ -164,7 +168,9 @@ protected:
         if constexpr(ParentType::value)
         {
             auto oldRoot = std::move(std::get<PtrType>(root));
-            auto newRoot = std::make_shared<ParentType>();
+
+            auto newRoot = ParentAllocatorTraits::allocate(m_parentAllocator,1);
+            ParentAllocatorTraits::construct(m_parentAllocator,newRoot);
             oldRoot->m_parent = newRoot;
             rightChild->m_parent = newRoot;
             if constexpr(std::is_same_v<NodeType,LeafType>)
@@ -183,7 +189,6 @@ protected:
         else
         {
             throw(std::out_of_range("Maximum Tree depth exeeded"));
-            // throw exception
         }
     }
 };
