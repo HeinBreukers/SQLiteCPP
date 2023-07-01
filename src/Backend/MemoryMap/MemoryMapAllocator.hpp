@@ -3,6 +3,8 @@
 #include <array>
 #include <string>
 
+#include "OffsetPointer.hpp"
+
 // Option 1
 
 // Calculates location of BTree Node on DiskFile
@@ -46,9 +48,18 @@
 // use allocator_traits
 // use pointer_traits
 
+// Option 3
 
-class Serializer
+// dont use mmap https://db.cs.cmu.edu/mmap-cidr2022/
+// look into buffer pools
+// use offset pointers to determine location of page in file
+// use bufferpool to cache pages from disk
+
+// https://en.cppreference.com/w/cpp/named_req/Allocator
+
+template<typename ValueType>
+class LRUFileAllocator
 {
-
+public:
 
 };
